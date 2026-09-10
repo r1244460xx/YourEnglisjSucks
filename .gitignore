@@ -1,0 +1,35 @@
+# Runtime & Build outputs
+backend/target/
+backend/data/
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+
+# Database files
+data/
+*.db
+*.mv.db
+*.trace.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE & Editor files
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+.project
+.classpath
+.settings/
+
+# OS specific
+Thumbs.db
+.DS_Store
+
+# Maven wrapper jar if desired to ignore (or keep)
+# backend/.mvn/wrapper/maven-wrapper.jar

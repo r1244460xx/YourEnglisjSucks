@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YourEnglishSucks - 互動式前端 GUI 原型 (無需後端即開即用)</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(140, 140, 150, 0.25); border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(140, 140, 150, 0.45); }
+    
+    :root {
+      --background: #ffffff;
+      --foreground: #0f172a;
+      --card: #f8fafc;
+      --border: #e2e8f0;
+      --muted: #64748b;
+      --primary: #4f46e5;
+    }
+    .dark {
+      --background: #090d16;
+      --foreground: #f1f5f9;
+      --card: #131b2e;
+      --border: #232f48;
+      --muted: #94a3b8;
+      --primary: #6366f1;
+    }
+  </style>
+</head>
+<body class="bg-[var(--background)] text-[var(--foreground)] h-full flex flex-col font-sans overflow-hidden antialiased transition-colors duration-200">
+
+  <!-- 1. Top Header with 3 Horizontal Tabs -->
+  <header class="h-14 border-b border-[var(--border)] px-4 flex items-center justify-between bg-[var(--card)] shrink-0 z-10 select-none shadow-xs">
+    <!-- Brand -->
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-white font-bold text-sm shadow-xs">
+        YS
+      </div>
+      <div class="flex flex-col">
+        <span class="font-bold text-sm tracking-tight flex items-center gap-1.5">
+          YourEnglishSucks
+          <span class="text-[10px] bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded font-mono border border-indigo-500/20">
+            GUI Prototype
+          </span>
+        </span>
+      </div>
+    </div>
+
+    <!-- 3 Horizontal Tabs -->
+    <div class="flex items-center bg-[var(--background)] p-1 rounded-xl border border-[var(--border)] text-xs sm:text-sm font-medium">
+      <button class="px-3 sm:px-4 py-1.5 rounded-lg flex items-center gap-1.5 bg-indigo-600 text-white shadow-xs font-semibold cursor-pointer">
+        <span>✨</span> <span>英文修飾</span>
+      </button>
+      <button disabled class="px-3 sm:px-4 py-1.5 rounded-lg flex items-center gap-1.5 text-[var(--muted)] opacity-50 cursor-not-allowed" title="後續版本實作">
+        <span>🌐</span> <span class="hidden sm:inline">英翻中</span>
+        <span class="text-[9px] uppercase px-1 py-0.2 rounded bg-[var(--card)] border border-[var(--border)]">Coming</span>
+      </button>
+      <button disabled class="px-3 sm:px-4 py-1.5 rounded-lg flex items-center gap-1.5 text-[var(--muted)] opacity-50 cursor-not-allowed" title="後續版本實作">
+        <span>🔄</span> <span class="hidden sm:inline">中翻英</span>
+        <span class="text-[9px] uppercase px-1 py-0.2 rounded bg-[var(--card)] border border-[var(--border)]">Coming</span>
+      </button>
+    </div>
+
+    <!-- Right Controls -->
+    <div class="flex items-center gap-2">
+      <!-- Error simulation switch for testing -->
+      <label class="hidden lg:flex items-center gap-1.5 text-[11px] text-[var(--muted)] cursor-pointer px-2 py-1 rounded bg-[var(--background)] border border-[var(--border)]">
+        <input type="checkbox" id="mock-error-toggle" class="cursor-pointer rounded">
+        <span>模擬連線失敗測試</span>
+      </label>
+
+      <!-- Model Indicator -->
+      <div class="hidden md:flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20">
+        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+        <span>Gemini 1.5 Flash</span>
+      </div>
+
+      <!-- Theme Toggle -->
+      <button id="theme-btn" class="p-2 rounded-xl text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--background)] border border-transparent hover:border-[var(--border)] transition cursor-pointer">
+        🌙
+      </button>
+    </div>
+  </header>
+
+  <!-- 2. Main Body (Sidebar + Central Chat Stream) -->
+  <div class="flex flex-1 overflow-hidden">
+
+    <!-- Left Sidebar: Conversations list -->
+    <aside class="w-64 sm:w-72 bg-[var(--card)] border-r border-[var(--border)] flex flex-col shrink-0 select-none">
+      <!-- New Chat Button -->
+      <div class="p-3 border-b border-[var(--border)]">
+        <button id="new-chat-btn" class="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white font-medium py-2.5 px-4 rounded-xl shadow-xs transition cursor-pointer text-xs sm:text-sm">
+          <span class="text-base leading-none">+</span>
+          <span>新對話 (New Chat)</span>
+        </button>
+      </div>
+
+      <!-- Conversations List (All Loaded at Once) -->
+      <div id="conv-list-container" class="flex-1 overflow-y-auto p-2.5 space-y-4">
+        <!-- Rendered dynamically -->
+      </div>
+
+      <!-- Sidebar Footer -->
+      <div class="p-2.5 border-t border-[var(--border)] text-[11px] text-[var(--muted)] flex items-center justify-between">
+        <span id="conv-count-label">歷史紀錄：0 筆</span>
+        <span class="text-emerald-600 dark:text-emerald-400 font-mono">全部已載入</span>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 flex flex-col bg-[var(--background)] overflow-hidden relative">
+
+      <!-- Active Conversation Top Title Bar (Option C: Dual Renaming) -->
+      <div id="top-title-bar" class="h-10 border-b border-[var(--border)] px-4 sm:px-6 flex items-center justify-between bg-[var(--card)]/60 text-xs shrink-0">
+        <div class="flex items-center gap-2 min-w-0 flex-1">
+          <span class="text-[var(--muted)]">主題：</span>
+          <div id="title-display-wrap" class="flex items-center gap-1.5 min-w-0 cursor-pointer group py-1 px-1.5 rounded hover:bg-[var(--background)] transition">
+            <span id="current-title-text" class="font-semibold truncate text-[var(--foreground)]">新對話 (未命名)</span>
+            <span class="text-[10px] text-[var(--muted)] opacity-0 group-hover:opacity-100 transition">✏️ 點擊修改</span>
+          </div>
+          <!-- Inline Editor in Header -->
+          <input id="title-header-input" type="text" class="hidden px-2 py-0.5 text-xs rounded border border-indigo-500 bg-[var(--background)] text-[var(--foreground)] w-64 focus:outline-none" />
+        </div>
+        
+        <div class="text-[11px] text-[var(--muted)] hidden sm:inline">
+          大原則：一次新對話修飾一篇英文文本，後續針對該篇深入討論
+        </div>
+      </div>
+
+      <!-- Chat Messages Scroll Area -->
+      <div id="chat-messages-container" class="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 space-y-6 max-w-4xl mx-auto w-full">
+        <!-- Dynamically rendered messages -->
+      </div>
+
+      <!-- Bottom Sticky Input Area -->
+      <div class="border-t border-[var(--border)] bg-[var(--card)] p-3 sm:p-4 shrink-0 select-none">
+        <div class="max-w-4xl mx-auto">
+          <div class="relative bg-[var(--background)] border border-[var(--border)] focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-500/20 rounded-2xl p-2.5 transition shadow-xs">
+            
+            <!-- Auto-expanding Textarea -->
+            <textarea
+              id="user-input"
+              rows="1"
+              maxlength="4000"
+              placeholder="輸入要被修飾的英文文本... (按 Enter 換行，Shift + Enter 送出)"
+              class="w-full bg-transparent border-0 focus:outline-none resize-none text-[var(--foreground)] text-sm leading-relaxed max-h-56 overflow-y-auto px-2 py-1 placeholder:text-[var(--muted)]"
+              style="min-height: 28px;"
+            ></textarea>
+
+            <!-- Bottom Tools Bar -->
+            <div class="flex items-center justify-between pt-2 border-t border-[var(--border)]/40 mt-1 px-1">
+              <!-- Shortcuts & Character Counter -->
+              <div class="text-[11px] text-[var(--muted)] flex items-center gap-2">
+                <span class="inline-flex items-center gap-1">
+                  <kbd class="px-1.5 py-0.5 rounded bg-[var(--card)] border border-[var(--border)] font-mono text-[10px]">Enter</kbd>
+                  <span>換行</span>
+                </span>
+                <span>•</span>
+                <span class="inline-flex items-center gap-1 font-medium text-[var(--foreground)]">
+                  <kbd class="px-1.5 py-0.5 rounded bg-[var(--card)] border border-[var(--border)] font-mono text-[10px]">Shift</kbd>+<kbd class="px-1.5 py-0.5 rounded bg-[var(--card)] border border-[var(--border)] font-mono text-[10px]">Enter</kbd>
+                  <span>送出</span>
+                </span>
+                <span>•</span>
+                <!-- 4000 Character Counter (Option 3) -->
+                <span id="char-counter" class="font-mono text-[11px]">0 / 4000 字元</span>
+              </div>
+
+              <!-- Action Buttons -->
+              <div class="flex items-center gap-2">
+                <!-- Thinking Stop Button (Requirement: 強制中斷思緒停止按鈕) -->
+                <button
+                  id="stop-btn"
+                  class="hidden items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white transition cursor-pointer shadow-xs animate-pulse"
+                >
+                  <span>⏹️ 停止生成 (Stop)</span>
+                </button>
+
+                <!-- Send Button -->
+                <button
+                  id="send-btn"
+                  class="flex items-center gap-1.5 text-xs font-semibold px-4 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white transition cursor-pointer shadow-xs disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <span id="send-btn-label">送出修飾</span>
+                  <span>🚀</span>
+                </button>
+              </div>
+            </div>
+
+          </div>
+
+          <div class="text-center mt-2 text-[11px] text-[var(--muted)] flex items-center justify-center gap-2">
+            <span id="input-status-hint">💡 首次修飾將注入專屬「英文修飾 Skill」，修飾完成後可於同一對話持續追加討論。</span>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- Delete Confirm Modal (Option A) -->
+  <div id="delete-modal" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-xs items-center justify-center p-4">
+    <div class="bg-[var(--card)] border border-[var(--border)] rounded-2xl max-w-sm w-full p-5 shadow-xl space-y-4">
+      <div class="flex items-center gap-2 text-red-500">
+        <span class="text-xl">⚠️</span>
+        <h3 class="font-bold text-sm text-[var(--foreground)]">確認刪除對話</h3>
+      </div>
+      <p class="text-xs text-[var(--muted)] leading-relaxed">
+        確定要刪除這筆歷史紀錄嗎？此動作將會一併移除該次修飾與所有追加問答，且無法復原。
+      </p>
+      <div class="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border)]">
+        <button id="cancel-delete-btn" class="px-3 py-1.5 rounded-xl text-xs border border-[var(--border)] hover:bg-[var(--background)] transition cursor-pointer">
+          取消
+        </button>
+        <button id="confirm-delete-btn" class="px-3.5 py-1.5 rounded-xl text-xs bg-red-600 hover:bg-red-700 text-white font-medium transition cursor-pointer">
+          確認刪除
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Client-side Logic Script -->
+  <script>
+    // State Store (100% in-browser)
+    const state = {
+      conversations: [
+        {
+          id: 'conv-demo-1',
+          title: 'Project status delay notification',
+          updatedAt: new Date(Date.now() - 3600 * 1000).toISOString(),
+          messages: [
+            {
+              sender: 'USER',
+              round: 1,
+              content: 'I am writing this email for inform you about the project status. Because our team meet some difficult problem in database connection, so the launch date maybe delay for two weeks. Please kindly understand our situation.'
+            },
+            {
+              sender: 'AI',
+              round: 1,
+              content: `### 1. 🔍 哪裡這樣寫不口語道地 (Chinglish & Unidiomatic Analysis)
+- **問題點 1**：\`for inform you\` ➔ 英文中表達目的不定詞習慣使用 **to + 原形動詞** (\`to update you\`)，用 \`for + V-ing\` 顯得不自然且文法瑕疵。
+- **問題點 2**：\`Because ... so ...\` ➔ 中文常說「因為...所以...」，但在英文文法中兩者皆為連接詞，**絕對不能同句並存**。
+- **問題點 3**：\`Please kindly understand our situation\` ➔ 語氣過於生硬甚至帶有中式客套的施壓感，母語人士在商業書信更常用感激理解的正面語氣。
+
+---
+
+### 2. 🌟 建議修飾版本 (Refined Versions)
+- **🗣️ 自然口語/對話版 (Natural & Conversational)**：
+  > *"Quick update on the project: we ran into some database connectivity hiccups, so launch will likely slip by a couple of weeks. Really appreciate your patience!"*
+- **💼 專業商務/正式版 (Professional & Formal)**：
+  > *"I am writing to provide an update on our project schedule. Due to unforeseen database connectivity challenges, our anticipated launch date has been postponed by approximately two weeks. We truly appreciate your understanding."*
+
+---
+
+### 3. 💡 為什麼要修改成這樣的版本 (Rationale & Grammar Insights)
+- **動詞搭配**：在商務環境中，用 \`update you\` 比 \`inform you\` 更具溝通同理心；遇到阻礙用 \`run into challenges / hiccups\` 比單調的 \`meet problem\` 更加道地。
+- **句型連詞**：改用 \`Due to + 名詞片語\` 成功消除 \`Because...so\` 的雙重連接詞語病，語氣更加幹練。
+- **情商語調 (Tone)**：將請求諒解改為 \`We appreciate your understanding\`，展現成熟專業的合作態度。
+
+---
+
+### 4. 📚 實用片語與延伸替換 (Vocabulary & Idiom Upgrades)
+- **run into a snag / hiccup**：遇到小阻礙、突發狀況。(例：*We ran into a minor snag with the build.*)
+- **push back / postpone**：推遲、延期。(例：*The release date has been pushed back to next Friday.*)`
+            }
+          ]
+        }
+      ],
+      currentId: 'conv-demo-1',
+      drafts: {}, // Option B: Unsaved drafts per session { [convId or 'new']: "draft text" }
+      isThinking: false,
+      thinkingTimer: null,
+      interruptedPrompt: '',
+      pendingDeleteId: null
+    };
+
+    // DOM Elements
+    const convListContainer = document.getElementById('conv-list-container');
+    const chatContainer = document.getElementById('chat-messages-container');
+    const userInput = document.getElementById('user-input');
+    const charCounter = document.getElementById('char-counter');
+    const sendBtn = document.getElementById('send-btn');
+    const sendBtnLabel = document.getElementById('send-btn-label');
+    const stopBtn = document.getElementById('stop-btn');
+    const newChatBtn = document.getElementById('new-chat-btn');
+    const convCountLabel = document.getElementById('conv-count-label');
+    const currentTitleText = document.getElementById('current-title-text');
+    const titleDisplayWrap = document.getElementById('title-display-wrap');
+    const titleHeaderInput = document.getElementById('title-header-input');
+    const inputStatusHint = document.getElementById('input-status-hint');
+    const themeBtn = document.getElementById('theme-btn');
+    const mockErrorToggle = document.getElementById('mock-error-toggle');
+    const deleteModal = document.getElementById('delete-modal');
+    const confirmDeleteBtn = document.getElementById('confirm-delete-btn');
+    const cancelDeleteBtn = document.getElementById('cancel-delete-btn');
+
+    // Initialize
+    function init() {
+      renderConversations();
+      renderChat();
+      updateInputUI();
+
+      // Theme toggle
+      themeBtn.addEventListener('click', () => {
+        document.documentElement.classList.toggle('dark');
+        themeBtn.textContent = document.documentElement.classList.contains('dark') ? '☀️' : '🌙';
+      });
+
+      // Auto-expand textarea & character counter
+      userInput.addEventListener('input', () => {
+        autoExpand();
+        updateCharCount();
+        saveCurrentDraft();
+      });
+
+      // Key handling: Enter for newline, Shift+Enter for send
+      userInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && e.shiftKey) {
+          e.preventDefault();
+          handleSend();
+        }
+      });
+
+      sendBtn.addEventListener('click', handleSend);
+      stopBtn.addEventListener('click', handleStopThinking);
+      newChatBtn.addEventListener('click', handleNewChat);
+
+      // Top title inline editing (Option C)
+      titleDisplayWrap.addEventListener('click', () => {
+        const currentConv = getCurrentConv();
+        if (!currentConv) return;
+        titleDisplayWrap.classList.add('hidden');
+        titleHeaderInput.classList.remove('hidden');
+        titleHeaderInput.value = currentConv.title;
+        titleHeaderInput.focus();
+        titleHeaderInput.select();
+      });
+
+      titleHeaderInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') saveHeaderTitle();
+        if (e.key === 'Escape') cancelHeaderTitle();
+      });
+      titleHeaderInput.addEventListener('blur', saveHeaderTitle);
+
+      // Delete Modal
+      confirmDeleteBtn.addEventListener('click', () => {
+        if (state.pendingDeleteId) {
+          state.conversations = state.conversations.filter(c => c.id !== state.pendingDeleteId);
+          delete state.drafts[state.pendingDeleteId];
+          if (state.currentId === state.pendingDeleteId) {
+            handleNewChat();
+          } else {
+            renderConversations();
+          }
+        }
+        closeDeleteModal();
+      });
+
+      cancelDeleteBtn.addEventListener('click', closeDeleteModal);
+    }
+
+    function autoExpand() {
+      userInput.style.height = 'auto';
+      userInput.style.height = Math.min(userInput.scrollHeight, 220) + 'px';
+    }
+
+    function updateCharCount() {
+      const len = userInput.value.length;
+      charCounter.textContent = `${len} / 4000 字元`;
+      if (len >= 3800) {
+        charCounter.classList.add('text-amber-500', 'font-bold');
+      } else {
+        charCounter.classList.remove('text-amber-500', 'font-bold');
+      }
+    }
+
+    // Option B: Save and Restore Drafts per conversation
+    function saveCurrentDraft() {
+      const key = state.currentId || 'new_chat';
+      state.drafts[key] = userInput.value;
+    }
+
+    function restoreDraft(convId) {
+      const key = convId || 'new_chat';
+      userInput.value = state.drafts[key] || '';
+      autoExpand();
+      updateCharCount();
+    }
+
+    function getCurrentConv() {
+      return state.conversations.find(c => c.id === state.currentId);
+    }
+
+    // Render Sidebar Conversations (All loaded at once)
+    function renderConversations() {
+      convListContainer.innerHTML = '';
+      convCountLabel.textContent = `歷史紀錄：${state.conversations.length} 筆`;
+
+      if (state.conversations.length === 0) {
+        convListContainer.innerHTML = `<div class="p-4 text-center text-xs text-[var(--muted)]">尚無歷史對話紀錄。</div>`;
+        return;
+      }
+
+      state.conversations.forEach(conv => {
+        const isSelected = conv.id === state.currentId;
+        const item = document.createElement('div');
+        item.className = `group relative flex items-center justify-between p-2.5 rounded-xl text-xs font-medium cursor-pointer transition ${
+          isSelected
+            ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60 shadow-xs'
+            : 'text-[var(--foreground)] hover:bg-[var(--background)]'
+        }`;
+
+        item.innerHTML = `
+          <div class="flex items-center gap-2 min-w-0 flex-1 pr-1" id="conv-item-text-${conv.id}">
+            <span class="text-sm">💬</span>
+            <span class="truncate title-span">${escapeHtml(conv.title)}</span>
+          </div>
+          <input type="text" class="hidden title-input px-1.5 py-0.5 text-xs rounded border border-indigo-500 bg-[var(--background)] text-[var(--foreground)] w-full" value="${escapeHtml(conv.title)}" />
+          <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition shrink-0">
+            <button class="rename-btn p-1 text-[var(--muted)] hover:text-indigo-600 rounded transition" title="重新命名">✏️</button>
+            <button class="delete-btn p-1 text-[var(--muted)] hover:text-red-500 rounded transition" title="刪除紀錄">🗑️</button>
+          </div>
+        `;
+
+        // Click to select
+        item.addEventListener('click', (e) => {
+          if (e.target.closest('.rename-btn') || e.target.closest('.delete-btn') || e.target.tagName === 'INPUT') return;
+          saveCurrentDraft();
+          state.currentId = conv.id;
+          restoreDraft(conv.id);
+          renderConversations();
+          renderChat();
+          updateInputUI();
+        });
+
+        // Option C: Inline Rename inside Sidebar
+        const titleSpan = item.querySelector('.title-span');
+        const titleInput = item.querySelector('.title-input');
+        const renameBtn = item.querySelector('.rename-btn');
+        const deleteBtn = item.querySelector('.delete-btn');
+
+        renameBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          titleSpan.classList.add('hidden');
+          renameBtn.classList.add('hidden');
+          deleteBtn.classList.add('hidden');
+          titleInput.classList.remove('hidden');
+          titleInput.focus();
+          titleInput.select();
+        });
+
+        const saveSidebarRename = () => {
+          const newTitle = titleInput.value.trim();
+          if (newTitle) {
+            conv.title = newTitle;
+            if (state.currentId === conv.id) {
+              currentTitleText.textContent = newTitle;
+            }
+          }
+          renderConversations();
+        };
+
+        titleInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') saveSidebarRename();
+          if (e.key === 'Escape') renderConversations();
+        });
+        titleInput.addEventListener('blur', saveSidebarRename);
+
+        // Delete with Confirm Modal (Option A)
+        deleteBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          state.pendingDeleteId = conv.id;
+          deleteModal.classList.remove('hidden');
+          deleteModal.classList.add('flex');
+        });
+
+        convListContainer.appendChild(item);
+      });
+    }
+
+    function saveHeaderTitle() {
+      const newTitle = titleHeaderInput.value.trim();
+      const currentConv = getCurrentConv();
+      if (currentConv && newTitle) {
+        currentConv.title = newTitle;
+        currentTitleText.textContent = newTitle;
+        renderConversations();
+      }
+      cancelHeaderTitle();
+    }
+
+    function cancelHeaderTitle() {
+      titleHeaderInput.classList.add('hidden');
+      titleDisplayWrap.classList.remove('hidden');
+    }
+
+    function closeDeleteModal() {
+      state.pendingDeleteId = null;
+      deleteModal.classList.add('hidden');
+      deleteModal.classList.remove('flex');
+    }
+
+    // Render Central Chat Messages
+    function renderChat() {
+      const currentConv = getCurrentConv();
+      chatContainer.innerHTML = '';
+
+      if (!currentConv || currentConv.messages.length === 0) {
+        currentTitleText.textContent = '新對話 (尚未輸入)';
+        // Render Empty State
+        chatContainer.innerHTML = `
+          <div class="h-full flex flex-col items-center justify-center text-center p-6 space-y-5 my-auto">
+            <div class="w-16 h-16 rounded-3xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-2xl border border-indigo-500/20 shadow-xs">
+              ✨
+            </div>
+            <div>
+              <h2 class="text-xl font-bold tracking-tight text-[var(--foreground)]">輸入需要修飾的英文文本</h2>
+              <p class="mt-1.5 text-xs text-[var(--muted)] max-w-md mx-auto leading-relaxed">
+                單次上限 4,000 字元。首次送出後將由「英文修飾 Skill」深度解析不口語處與修改原因，後續可在同一對話持續深入追加討論。
+              </p>
+            </div>
+
+            <!-- Quick Template Cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-w-lg w-full text-left">
+              <div onclick="fillSample(1)" class="p-3 rounded-xl border border-[var(--border)] bg-[var(--card)] hover:border-indigo-500 hover:shadow-xs transition cursor-pointer text-xs space-y-1">
+                <div class="font-semibold text-[var(--foreground)]">💼 專案延期商務通知</div>
+                <div class="text-[var(--muted)] line-clamp-2">"Because our team meet some difficult problem in database connection, so..."</div>
+              </div>
+              <div onclick="fillSample(2)" class="p-3 rounded-xl border border-[var(--border)] bg-[var(--card)] hover:border-indigo-500 hover:shadow-xs transition cursor-pointer text-xs space-y-1">
+                <div class="font-semibold text-[var(--foreground)]">📄 外商求職自薦信</div>
+                <div class="text-[var(--muted)] line-clamp-2">"I am very excited to apply for this software engineer position. I have 3 years experience..."</div>
+              </div>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      currentTitleText.textContent = currentConv.title;
+
+      currentConv.messages.forEach(msg => {
+        const isUser = msg.sender === 'USER';
+        const isRound1 = msg.round === 1;
+
+        const bubble = document.createElement('div');
+        bubble.className = 'flex flex-col gap-2';
+
+        if (isUser) {
+          bubble.innerHTML = `
+            <div class="flex items-center gap-2 text-xs text-[var(--muted)] font-medium">
+              <span>👤 您</span>
+              <span>•</span>
+              <span class="px-2 py-0.5 rounded text-[11px] font-semibold border ${
+                isRound1
+                  ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20'
+                  : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
+              }">
+                ${isRound1 ? '第 1 輪 · 原始英文文本' : `追加發問 (Round ${msg.round})`}
+              </span>
+            </div>
+            <div class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-4 sm:p-5 shadow-xs text-sm leading-relaxed whitespace-pre-wrap">
+              ${escapeHtml(msg.content)}
+            </div>
+          `;
+        } else {
+          // AI message
+          bubble.innerHTML = `
+            <div class="flex items-center gap-2 text-xs text-[var(--muted)] font-medium">
+              <span class="text-indigo-600 dark:text-indigo-400 font-semibold">🤖 AI 英文修飾助手</span>
+              <span>•</span>
+              <span class="px-2 py-0.5 rounded text-[11px] font-semibold border ${
+                isRound1
+                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                  : 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20'
+              }">
+                ${isRound1 ? '✨ 英文修飾解析 (搭配專屬 Skill)' : '💬 上下文追加答覆'}
+              </span>
+            </div>
+            <div class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-5 sm:p-6 shadow-xs text-sm leading-relaxed space-y-3 prose-like">
+              ${formatMarkdown(msg.content)}
+            </div>
+          `;
+        }
+
+        chatContainer.appendChild(bubble);
+      });
+
+      // Render Thinking Bubble if in thinking state
+      if (state.isThinking) {
+        const thinkingBubble = document.createElement('div');
+        thinkingBubble.id = 'thinking-indicator';
+        thinkingBubble.className = 'flex flex-col gap-2 animate-in fade-in';
+        thinkingBubble.innerHTML = `
+          <div class="flex items-center justify-between text-xs text-[var(--muted)] font-medium">
+            <div class="flex items-center gap-2">
+              <span class="inline-block w-3.5 h-3.5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></span>
+              <span>AI 正在深入拆解語意並重構道地英文中...</span>
+            </div>
+            <button onclick="handleStopThinking()" class="text-amber-500 hover:text-amber-600 font-medium cursor-pointer">
+              ⏹️ 點此中斷
+            </button>
+          </div>
+          <div class="bg-[var(--card)] border border-indigo-500/30 rounded-2xl p-4 shadow-xs flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <div class="flex space-x-1">
+                <div class="w-2 h-2 rounded-full bg-indigo-600 animate-bounce"></div>
+                <div class="w-2 h-2 rounded-full bg-indigo-600 animate-bounce [animation-delay:0.2s]"></div>
+                <div class="w-2 h-2 rounded-full bg-indigo-600 animate-bounce [animation-delay:0.4s]"></div>
+              </div>
+              <span class="text-xs text-[var(--muted)]">調用 Gemini API (模擬 60 秒上限超時機制)...</span>
+            </div>
+            <button onclick="handleStopThinking()" class="px-2.5 py-1 text-xs rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 font-medium cursor-pointer transition">
+              強制停止思考
+            </button>
+          </div>
+        `;
+        chatContainer.appendChild(thinkingBubble);
+      }
+
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    function updateInputUI() {
+      const currentConv = getCurrentConv();
+      const isFollowUp = currentConv && currentConv.messages.length > 0;
+
+      if (isFollowUp) {
+        userInput.placeholder = "針對這篇英文修飾追加發問... (例如：為什麼不用某詞？按 Enter 換行，Shift + Enter 送出)";
+        sendBtnLabel.textContent = "追加發問";
+        inputStatusHint.textContent = "💡 目前處於同 Session 上下文，追加發問不重複注入 Skill，直接深入討論。";
+      } else {
+        userInput.placeholder = "輸入要被修飾的英文文本... (按 Enter 換行，Shift + Enter 送出)";
+        sendBtnLabel.textContent = "送出修飾";
+        inputStatusHint.textContent = "💡 一次新對話修飾一篇英文文本，送出後可持續追問討論。";
+      }
+    }
+
+    // Send logic
+    function handleSend() {
+      const text = userInput.value.trim();
+      if (!text || state.isThinking) return;
+
+      state.interruptedPrompt = text; // Keep backup for stop button restoration
+      state.isThinking = true;
+
+      let currentConv = getCurrentConv();
+      const isFirstRound = !currentConv || currentConv.messages.length === 0;
+
+      if (isFirstRound) {
+        // Create new conversation
+        const newId = 'conv-' + Date.now();
+        const initialTitle = text.length <= 35 ? text.replace(/\n/g, ' ') : text.substring(0, 35).replace(/\n/g, ' ') + '...';
+        currentConv = {
+          id: newId,
+          title: initialTitle,
+          updatedAt: new Date().toISOString(),
+          messages: [
+            { sender: 'USER', round: 1, content: text }
+          ]
+        };
+        state.conversations.unshift(currentConv);
+        state.currentId = newId;
+        delete state.drafts['new_chat'];
+      } else {
+        // Follow-up
+        const nextRound = Math.floor(currentConv.messages.length / 2) + 1;
+        currentConv.messages.push({
+          sender: 'USER',
+          round: nextRound,
+          content: text
+        });
+        currentConv.updatedAt = new Date().toISOString();
+      }
+
+      // Clear input and show stop button
+      userInput.value = '';
+      autoExpand();
+      updateCharCount();
+      delete state.drafts[state.currentId];
+
+      stopBtn.classList.remove('hidden');
+      stopBtn.classList.add('flex');
+      sendBtn.disabled = true;
+
+      renderConversations();
+      renderChat();
+
+      // Simulated Gemini API Request (2.5s)
+      state.thinkingTimer = setTimeout(() => {
+        state.isThinking = false;
+        stopBtn.classList.add('hidden');
+        stopBtn.classList.remove('flex');
+        sendBtn.disabled = false;
+
+        // Check if user turned on "模擬連線失敗測試"
+        if (mockErrorToggle.checked) {
+          renderErrorCard(currentConv, text, isFirstRound);
+          return;
+        }
+
+        if (isFirstRound) {
+          // AI Polish Response (Four Modules)
+          currentConv.messages.push({
+            sender: 'AI',
+            round: 1,
+            content: `### 1. 🔍 哪裡這樣寫不口語道地 (Chinglish & Unidiomatic Analysis)
+- **問題點 1**：引述原文 \`"${escapeHtml(text.substring(0, 30))}..."\` ➔ 此處句型稍微直譯，在母語者日常交流中偏向生硬。
+- **問題點 2**：動詞與介系詞搭配可以更緊湊精煉，避免過多的贅詞修飾。
+
+---
+
+### 2. 🌟 建議修飾版本 (Refined Versions)
+- **🗣️ 自然口語/對話版 (Natural & Conversational)**：
+  > *"Here's a natural way to put it: we made great headway and just wanted to share the latest updates with you. Let me know if you need anything else!"*
+- **💼 專業商務/正式版 (Professional & Formal)**：
+  > *"I am writing to provide a formal update regarding our recent progress. Please review the highlighted points and feel free to reach out with any inquiries."*
+
+---
+
+### 3. 💡 為什麼要修改成這樣的版本 (Rationale & Grammar Insights)
+- **語意聚焦**：精簡掉了非必要的關係代名詞，使整段文字節奏更加明快。
+- **語境適應**：口語版適合 Slack 或快速郵件；商務版語氣得體且保留適度禮貌距離。
+
+---
+
+### 4. 📚 實用片語與延伸替換 (Vocabulary & Idiom Upgrades)
+- **bring someone up to speed**：讓某人跟上最新進度。(例：*Let me bring you up to speed on the project.*)
+- **touch base**：簡短碰面交流、對齊進度。(例：*Let's touch base tomorrow morning.*)`
+          });
+        } else {
+          // AI Follow-up response
+          currentConv.messages.push({
+            sender: 'AI',
+            round: Math.floor(currentConv.messages.length / 2) + 1,
+            content: `針對您的追加提問：**「${escapeHtml(text)}」**
+
+在目前這個情境與上下文下：
+1. **口語選擇**：如果對象是同組工程師或好友，建議直切重點，例如用 \`Quick heads-up\` 或 \`Just checking in\`。
+2. **語氣差異**：在英語溝通中，主動表達感激（*Appreciate your flexibility*）永遠比單純道歉更有力量。
+
+您隨時可以繼續針對這篇文章的任何單字用法追問喔！`
+          });
+        }
+
+        renderChat();
+        updateInputUI();
+      }, 2500);
+    }
+
+    // Requirement: 強制中斷思緒停止按鈕，原本的文本要保留回輸入欄
+    function handleStopThinking() {
+      if (!state.isThinking) return;
+      clearTimeout(state.thinkingTimer);
+      state.isThinking = false;
+
+      stopBtn.classList.add('hidden');
+      stopBtn.classList.remove('flex');
+      sendBtn.disabled = false;
+
+      // Restore user text back to input box
+      userInput.value = state.interruptedPrompt || '';
+      autoExpand();
+      updateCharCount();
+
+      // Remove the last pending user message from conversation
+      const currentConv = getCurrentConv();
+      if (currentConv && currentConv.messages.length > 0) {
+        currentConv.messages.pop();
+        if (currentConv.messages.length === 0) {
+          state.conversations = state.conversations.filter(c => c.id !== currentConv.id);
+          state.currentId = null;
+        }
+      }
+
+      renderConversations();
+      renderChat();
+      updateInputUI();
+
+      alert('⏹️ 已為您強制中斷 AI 思緒！原本輸入的文本已完整還原至下方輸入框，方便您重新編輯或發問。');
+      userInput.focus();
+    }
+
+    // Render Error Card with Retry Button (Option 3 & Requirement)
+    function renderErrorCard(conv, originalText, isFirstRound) {
+      const errorBubble = document.createElement('div');
+      errorBubble.className = 'flex flex-col gap-2 animate-in fade-in';
+      errorBubble.innerHTML = `
+        <div class="flex items-center gap-2 text-xs text-red-500 font-semibold">
+          <span>❌ 連線發生異常</span>
+        </div>
+        <div class="bg-red-500/10 border border-red-500/30 rounded-2xl p-4 sm:p-5 text-xs space-y-3">
+          <div class="text-[var(--foreground)] font-medium">
+            無法取得 Gemini API 回應 (連線逾時或 API 速率限制 429)。
+          </div>
+          <div class="text-[var(--muted)]">
+            您的原始文本已妥善保存，請點擊下方按鈕重新發送請求。
+          </div>
+          <button onclick="retrySend('${escapeHtml(originalText)}')" class="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-xs shadow-xs transition cursor-pointer">
+            <span>點擊重試 🔄</span>
+          </button>
+        </div>
+      `;
+      chatContainer.appendChild(errorBubble);
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    window.retrySend = function(text) {
+      mockErrorToggle.checked = false; // Turn off error toggle
+      userInput.value = text;
+      handleSend();
+    };
+
+    function handleNewChat() {
+      saveCurrentDraft();
+      state.currentId = null;
+      restoreDraft(null);
+      renderConversations();
+      renderChat();
+      updateInputUI();
+      userInput.focus();
+    }
+
+    window.fillSample = function(type) {
+      if (type === 1) {
+        userInput.value = "I am writing this email for inform you about the project status. Because our team meet some difficult problem in database connection, so the launch date maybe delay for two weeks. Please kindly understand our situation.";
+      } else {
+        userInput.value = "Dear Hiring Manager, I am very excited to apply for this software engineer position. I have 3 years experience and I can do many things like Java and React. Hope you can give me chance to interview.";
+      }
+      autoExpand();
+      updateCharCount();
+      userInput.focus();
+    };
+
+    function escapeHtml(str) {
+      return (str || '').replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    }
+
+    // Clean lightweight markdown formatter
+    function formatMarkdown(content) {
+      if (!content) return '';
+      let html = escapeHtml(content);
+      // Headings
+      html = html.replace(/### (.*?)\n/g, '<h3 class="text-sm font-bold text-indigo-600 dark:text-indigo-400 mt-3 mb-1">$1</h3>');
+      // Blockquotes
+      html = html.replace(/&gt; (.*?)\n/g, '<blockquote class="p-3 my-2 rounded-xl bg-[var(--background)] border-l-4 border-indigo-500 font-medium text-xs leading-relaxed">$1</blockquote>');
+      // Bold
+      html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+      // Code
+      html = html.replace(/`(.*?)`/g, '<code class="px-1.5 py-0.5 rounded bg-[var(--background)] border border-[var(--border)] font-mono text-xs text-indigo-600 dark:text-indigo-400">$1</code>');
+      // Lists
+      html = html.replace(/- (.*?)\n/g, '<li class="ml-4 list-disc text-xs text-[var(--foreground)] leading-relaxed">$1</li>');
+      // Horizontal rules
+      html = html.replace(/---\n/g, '<hr class="border-[var(--border)] my-3"/>');
+      return html.replace(/\n/g, '<br/>');
+    }
+
+    // Run on startup
+    init();
+  </script>
+</body>
+</html>
