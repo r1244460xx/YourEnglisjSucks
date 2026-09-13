@@ -5,7 +5,6 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 
@@ -27,7 +26,6 @@ public class PolishRawSubmission {
     @Column(nullable = false, unique = true)
     private UUID conversationId;
 
-    @Lob
     @Column(nullable = false, columnDefinition = "TEXT")
     private String rawText;
 
@@ -37,7 +35,6 @@ public class PolishRawSubmission {
     @Column(nullable = false)
     private int wordCount;
 
-    @Lob
     @Column(columnDefinition = "TEXT")
     private String habitFeatures; // 供未來擴充紀錄文法分析、常用單字、錯誤標籤等特徵 (JSON)
 

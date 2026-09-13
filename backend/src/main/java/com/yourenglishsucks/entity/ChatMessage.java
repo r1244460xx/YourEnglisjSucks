@@ -5,7 +5,6 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 
@@ -26,14 +25,12 @@ public class ChatMessage {
     @Column(nullable = false, length = 20)
     private String senderType; // USER, AI, SYSTEM
 
-    @Lob
     @Column(nullable = false, columnDefinition = "TEXT")
     private String content;
 
     @Column(nullable = false)
     private int roundNumber = 1;
 
-    @Lob
     @Column(columnDefinition = "TEXT")
     private String metadata;
 
