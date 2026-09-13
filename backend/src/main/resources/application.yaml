@@ -27,6 +27,7 @@ gemini:
   top-p: ${GEMINI_TOP_P:0.95}
   max-output-tokens: ${GEMINI_MAX_OUTPUT_TOKENS:1000}
   presence-penalty: ${GEMINI_PRESENCE_PENALTY:0.2}
+  thinking-budget: ${GEMINI_THINKING_BUDGET:0}
 
 ---
 spring:

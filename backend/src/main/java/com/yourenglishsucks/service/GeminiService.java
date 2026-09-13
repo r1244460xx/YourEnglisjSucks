@@ -52,6 +52,9 @@ public class GeminiService {
     @Value("${gemini.presence-penalty:0.2}")
     private double presencePenalty;
 
+    @Value("${gemini.thinking-budget:0}")
+    private int thinkingBudget;
+
     public GeminiService(ObjectMapper objectMapper) {
         this.restClient = RestClient.builder().build();
         this.objectMapper = objectMapper;
@@ -77,12 +80,15 @@ public class GeminiService {
 
     /**
      * 發送請求至 Google Gemini API
-     * @param systemInstruction 系統指令（可為 null）
-     * @param conversationHistory 歷史對話紀錄清單 [{role: "user"|"model", text: "..."}]
-     * @param apiKey 自定義或預設的 Gemini API Key
-     * @return AI 回覆文本
      */
     public String generateContent(String systemInstruction, List<Map<String, String>> conversationHistory, String apiKey) {
+        return generateContent(systemInstruction, conversationHistory, apiKey, null);
+    }
+
+    /**
+     * 發送請求至 Google Gemini API (支援自定義 responseSchema)
+     */
+    public String generateContent(String systemInstruction, List<Map<String, String>> conversationHistory, String apiKey, Map<String, Object> responseSchema) {
         String effectiveKey = resolveApiKey(apiKey);
 
         // 若啟用 mock 模式或未配置 key，直接回傳符合四大模組格式的模擬輸出
@@ -114,13 +120,17 @@ public class GeminiService {
         }
         requestBody.put("contents", contents);
 
-        // 3. Generation Config (嚴格限制 JSON 回覆、1000 Tokens、temperature 0.55、topP 0.95、presencePenalty 0.2)
+        // 3. Generation Config (嚴格限制 JSON 回覆、1000 Tokens、temperature 0.55、topP 0.95、presencePenalty 0.2、thinkingBudget 0、responseSchema)
         Map<String, Object> genConfig = new HashMap<>();
         genConfig.put("temperature", temperature);
         genConfig.put("topP", topP);
         genConfig.put("maxOutputTokens", maxOutputTokens);
         genConfig.put("presencePenalty", presencePenalty);
         genConfig.put("responseMimeType", "application/json");
+        genConfig.put("thinkingConfig", Map.of("thinkingBudget", thinkingBudget));
+        if (responseSchema != null && !responseSchema.isEmpty()) {
+            genConfig.put("responseSchema", responseSchema);
+        }
         requestBody.put("generationConfig", genConfig);
 
         try {
@@ -170,6 +180,20 @@ public class GeminiService {
             String systemInstruction,
             List<Map<String, String>> conversationHistory,
             String apiKey,
+            Consumer<String> onChunkReceived,
+            Runnable onComplete,
+            Consumer<Throwable> onError) {
+        streamContent(systemInstruction, conversationHistory, apiKey, null, onChunkReceived, onComplete, onError);
+    }
+
+    /**
+     * 端到端真流式輸出 (SSE Stream, 支援自定義 responseSchema)
+     */
+    public void streamContent(
+            String systemInstruction,
+            List<Map<String, String>> conversationHistory,
+            String apiKey,
+            Map<String, Object> responseSchema,
             Consumer<String> onChunkReceived,
             Runnable onComplete,
             Consumer<Throwable> onError) {
@@ -223,6 +247,10 @@ public class GeminiService {
                 genConfig.put("maxOutputTokens", maxOutputTokens);
                 genConfig.put("presencePenalty", presencePenalty);
                 genConfig.put("responseMimeType", "application/json");
+                genConfig.put("thinkingConfig", Map.of("thinkingBudget", thinkingBudget));
+                if (responseSchema != null && !responseSchema.isEmpty()) {
+                    genConfig.put("responseSchema", responseSchema);
+                }
                 requestBody.put("generationConfig", genConfig);
 
                 String jsonBody = objectMapper.writeValueAsString(requestBody);

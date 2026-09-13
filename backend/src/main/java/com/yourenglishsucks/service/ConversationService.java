@@ -96,9 +96,10 @@ public class ConversationService {
             return;
         }
 
-        // 4. 準備 Prompt
+        // 4. 準備 Prompt 與 ResponseSchema
         String systemPrompt = skillService.getEnglishPolishSystemPrompt();
         String userPrompt = skillService.buildFirstRoundPolishPrompt(rawText);
+        Map<String, Object> responseSchema = skillService.getPolishResponseSchema();
         List<Map<String, String>> history = List.of(
                 Map.of("role", "user", "text", userPrompt)
         );
@@ -109,6 +110,7 @@ public class ConversationService {
                 systemPrompt,
                 history,
                 request.apiKey(),
+                responseSchema,
                 chunk -> {
                     try {
                         fullReply.append(chunk);
@@ -277,14 +279,15 @@ public class ConversationService {
         ChatMessage userMessage = new ChatMessage(conversation.getId(), "USER", rawText, 1);
         userMessage = chatMessageRepository.save(userMessage);
 
-        // 4. 搭配專屬 Skill 呼叫 Gemini
+        // 4. 搭配專屬 Skill 與 ResponseSchema 呼叫 Gemini
         String systemPrompt = skillService.getEnglishPolishSystemPrompt();
         String userPrompt = skillService.buildFirstRoundPolishPrompt(rawText);
+        Map<String, Object> responseSchema = skillService.getPolishResponseSchema();
         List<Map<String, String>> history = List.of(
                 Map.of("role", "user", "text", userPrompt)
         );
 
-        String rawReply = geminiService.generateContent(systemPrompt, history, request.apiKey());
+        String rawReply = geminiService.generateContent(systemPrompt, history, request.apiKey(), responseSchema);
         String formattedReply = skillService.formatPolishJsonToMarkdown(rawReply);
 
         // 5. 儲存 AI 第 1 輪訊息 (content 存 Markdown, metadata 存原始 JSON)

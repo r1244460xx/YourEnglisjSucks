@@ -58,8 +58,9 @@
 - **歷史載入**：左側邊欄與中央視窗歷史紀錄均一次載入全部。
 
 ### 10. 模型參數與嚴格 JSON 結構化輸出模式 (Token 節省與格式保證)
-- **嚴格 JSON 回覆模式**：
-  - 啟用 Gemini API 的 `"responseMimeType": "application/json"`，配合 System Prompt 嚴格規範 JSON Schema（含 `refinedText`、`grammarAnalysis`、`rationale`、`idiomsAndUpgrades`）。
+- **嚴格 JSON 回覆模式與 responseSchema**：
+  - 啟用 Gemini API 的 `"responseMimeType": "application/json"`，並於請求之 `generationConfig` 注入嚴格的 `responseSchema` 定義（包含 `refinedText`, `grammarAnalysis`, `rationale`, `idiomsAndUpgrades`）。
+  - System Prompt 加入「任務目標」、「改寫準則（casual / formal）」與兩組高品質「少樣本範例 (Few-Shot Examples)」，引導母語思維改寫。
   - 大幅節省樣板文字、標籤符號與無效前言的 Token 消耗，且格式絕不跑版。
 - **後端配套措施**：
   - 後端 `SkillService.formatPolishJsonToMarkdown` 自動將純 JSON 回應解析並轉譯為包含 `> blockquote` 與條列結構的標準 Markdown。
@@ -69,5 +70,7 @@
   - `topP`：固定為 **0.95**。
   - `maxOutputTokens`：固定為 **1000**。
   - `presencePenalty`：固定為 **0.2**（抑制重複詞彙，引導更豐富道地的詞彙與句型替換）。
+  - `thinkingConfig`：`{"thinkingBudget": 0}`（關閉額外思考 token，極速輸出並節省 token 成本）。
   - `單次輸入長度上限`：前端與後端皆強制限制為 **1000** 字元。
+
 
