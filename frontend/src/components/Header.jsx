@@ -78,7 +78,7 @@ export default function Header({
           title={apiKeyConfigured ? 'Gemini API Key 已就緒' : '點擊設定 Gemini API Key'}
         >
           <Key className="w-3 h-3" />
-          <span>{modelName || 'Gemini 1.5 Flash'}</span>
+          <span>{modelName || 'Gemini 2.5 Flash'}</span>
           <span className={`w-1.5 h-1.5 rounded-full ${apiKeyConfigured ? 'bg-emerald-500' : 'bg-amber-500 animate-ping'}`}></span>
         </div>
 

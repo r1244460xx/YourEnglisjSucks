@@ -95,7 +95,8 @@ export default function SettingsModal({
             onChange={(e) => setModelName(e.target.value)}
             className="w-full px-3 py-2 rounded-xl bg-[var(--background)] border border-[var(--border)] focus:border-indigo-500 focus:outline-none text-xs text-[var(--foreground)]"
           >
-            <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash Lite (高額度、最推薦)</option>
+            <option value="gemini-2.5-flash">Gemini 2.5 Flash (預設、最新高效)</option>
+            <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash Lite (輕量高額度)</option>
             <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash Lite (輕量穩定)</option>
             <option value="gemini-3.6-flash">Gemini 3.6 Flash (深度思考)</option>
           </select>

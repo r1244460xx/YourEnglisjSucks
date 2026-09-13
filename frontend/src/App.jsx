@@ -33,7 +33,7 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [apiKey, setApiKey] = useState('');
   const [hasBackendApiKey, setHasBackendApiKey] = useState(false);
-  const [modelName, setModelName] = useState('gemini-1.5-flash');
+  const [modelName, setModelName] = useState('gemini-2.5-flash');
   const [isDark, setIsDark] = useState(false);
 
   useEffect(() => {

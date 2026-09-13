@@ -7,7 +7,7 @@ export async function fetchConfig() {
     return await res.json();
   } catch (err) {
     console.error(err);
-    return { hasBackendApiKey: false, model: 'gemini-3.6-flash', status: 'ONLINE (Mock)' };
+    return { hasBackendApiKey: false, model: 'gemini-2.5-flash', status: 'ONLINE (Mock)' };
   }
 }
 

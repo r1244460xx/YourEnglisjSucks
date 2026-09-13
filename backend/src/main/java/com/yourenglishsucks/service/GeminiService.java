@@ -34,7 +34,7 @@ public class GeminiService {
     @Value("${gemini.api-key:}")
     private String configuredApiKey;
 
-    @Value("${gemini.model:gemini-3.5-flash-lite}")
+    @Value("${gemini.model:gemini-2.5-flash}")
     private String modelName;
 
     @Value("${gemini.mock:true}")
