@@ -4,6 +4,7 @@ import { Sparkles, User, Bot, CheckCircle2, AlertCircle, Edit2, RotateCw, Square
 
 export default function ChatArea({
   currentConversation,
+  originalDraftText,
   messages,
   isLoading,
   errorInfo,
@@ -16,6 +17,8 @@ export default function ChatArea({
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState('');
   const [copiedId, setCopiedId] = useState(null);
+
+  const effectiveDraft = originalDraftText || (messages && messages.find((m) => m.senderType === 'USER' && m.roundNumber === 1)?.content) || '';
 
   const handleCopyText = (id, content) => {
     let textToCopy = content || '';
@@ -50,6 +53,12 @@ export default function ChatArea({
   };
 
   useEffect(() => {
+    // 若只有第 1 輪修飾，不強制觸底滾動，讓使用者的視覺焦點保持在頂部原始草稿與 AI 卡片起點
+    const isRoundOne = messages.length <= 2;
+    if (isRoundOne) {
+      return;
+    }
+    // 後續追加問答（Round 2 以上）平滑滾動至底部追蹤對話
     scrollEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading, errorInfo]);
 
@@ -222,108 +231,174 @@ export default function ChatArea({
             </div>
           </div>
         ) : (
-          /* Render Messages */
-          messages.map((msg, index) => {
-            const isUser = msg.senderType === 'USER';
-            const isRound1 = msg.roundNumber === 1;
+          <>
+            {/* Top Pinned / Persistent Original English Draft Card */}
+            {effectiveDraft && (
+              <div className="bg-[var(--card)] border-2 border-indigo-500/30 dark:border-indigo-500/20 rounded-2xl p-4 sm:p-5 shadow-xs transition mb-4">
+                <div className="flex items-center justify-between pb-3 border-b border-[var(--border)] mb-3 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="p-1 rounded-md bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-bold">
+                      📝
+                    </span>
+                    <span className="font-bold text-xs sm:text-sm text-[var(--foreground)] tracking-tight">
+                      修改前原始英文草稿 (Original English Draft)
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                      基準文本
+                    </span>
+                  </div>
 
-            if (isUser) {
-              return (
-                <div key={msg.id || index} className="flex flex-col gap-2">
-                  <div className="flex items-center gap-2 text-xs text-[var(--muted)] font-medium">
-                    <span className="flex items-center gap-1">
-                      <User className="w-3.5 h-3.5" />
-                      <span>您</span>
-                    </span>
-                    <span>•</span>
-                    <span className={`px-2 py-0.5 rounded text-[11px] font-semibold border ${
-                      isRound1
-                        ? 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20'
-                        : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
-                    }`}>
-                      {isRound1 ? '第 1 輪 · 原始英文文本' : `追加發問 (Round ${msg.roundNumber})`}
-                    </span>
-                  </div>
-                  <div className="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-4 sm:p-5 shadow-xs text-sm leading-relaxed whitespace-pre-wrap font-sans">
-                    {msg.content}
-                  </div>
+                  <button
+                    onClick={() => handleCopyText('original-draft-top', effectiveDraft)}
+                    className="flex items-center gap-1.5 text-xs text-[var(--muted)] hover:text-indigo-600 dark:hover:text-indigo-400 font-medium cursor-pointer transition py-1 px-2.5 rounded-lg hover:bg-[var(--background)] border border-transparent hover:border-[var(--border)]"
+                    title="點擊複製修改前原始草稿"
+                  >
+                    {copiedId === 'original-draft-top' ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-500" />
+                        <span className="text-emerald-500 font-semibold">已複製原文</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>複製原文草稿</span>
+                      </>
+                    )}
+                  </button>
                 </div>
-              );
-            } else {
-              const isStreaming = String(msg.id).startsWith('temp-ai-');
-              return (
-                <div key={msg.id || index} className="flex flex-col gap-2">
-                  <div className="flex items-center justify-between text-xs text-[var(--muted)] font-medium">
-                    <div className="flex items-center gap-2">
-                      <span className="flex items-center gap-1 text-indigo-600 dark:text-indigo-400 font-semibold">
-                        <Bot className="w-3.5 h-3.5" />
-                        <span>AI 英文修飾助手</span>
-                      </span>
-                      <span>•</span>
-                      <span className={`px-2 py-0.5 rounded text-[11px] font-semibold border ${
-                        isRound1
-                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
-                          : 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20'
-                      }`}>
-                        {isRound1 ? '✨ 英文修飾解析 (搭配專屬 Skill)' : '💬 上下文追加答覆'}
-                      </span>
-                    </div>
 
-                    <div className="flex items-center gap-2">
-                      {!isStreaming && msg.content && (
+                <div className="text-sm leading-relaxed text-[var(--foreground)] whitespace-pre-wrap select-text font-sans font-medium bg-[var(--background)]/70 p-3.5 rounded-xl border border-[var(--border)]/60">
+                  {effectiveDraft}
+                </div>
+              </div>
+            )}
+
+            {/* Render Messages */}
+            {messages.map((msg, index) => {
+              const isUser = msg.senderType === 'USER';
+              const isRound1 = msg.roundNumber === 1;
+
+              // 若已有頂部專屬草稿卡片，第 1 輪的使用者訊息即由頂部卡片代表，不重複顯示冗餘氣泡
+              if (isUser && isRound1 && effectiveDraft) {
+                return null;
+              }
+
+              if (isUser) {
+                return (
+                  <div key={msg.id || index} className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between text-xs text-[var(--muted)] font-medium">
+                      <div className="flex items-center gap-2">
+                        <span className="flex items-center gap-1">
+                          <User className="w-3.5 h-3.5" />
+                          <span>您</span>
+                        </span>
+                        <span>•</span>
+                        <span className="px-2 py-0.5 rounded text-[11px] font-semibold border bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20">
+                          {`追加發問 (Round ${msg.roundNumber})`}
+                        </span>
+                      </div>
+
+                      {msg.content && (
                         <button
-                          onClick={() => handleCopyText(msg.id || index, msg.content)}
-                          className="flex items-center gap-1 text-[11px] text-[var(--muted)] hover:text-indigo-600 dark:hover:text-indigo-400 font-medium cursor-pointer transition py-0.5 px-2 rounded-lg hover:bg-[var(--background)] border border-transparent hover:border-[var(--border)]"
-                          title="點擊複製修飾後英文全文"
+                          onClick={() => handleCopyText('user-' + (msg.id || index), msg.content)}
+                          className="flex items-center gap-1 text-[11px] text-[var(--muted)] hover:text-indigo-600 dark:hover:text-indigo-400 font-medium cursor-pointer transition py-0.5 px-2 rounded-lg hover:bg-[var(--card)] border border-transparent hover:border-[var(--border)]"
+                          title="複製追加發問內容"
                         >
-                          {copiedId === (msg.id || index) ? (
+                          {copiedId === ('user-' + (msg.id || index)) ? (
                             <>
                               <Check className="w-3 h-3 text-emerald-500" />
-                              <span className="text-emerald-500 font-semibold">已複製英文</span>
+                              <span className="text-emerald-500 font-semibold">已複製</span>
                             </>
                           ) : (
                             <>
                               <Copy className="w-3 h-3" />
-                              <span>複製修飾英文</span>
+                              <span>複製內容</span>
                             </>
                           )}
                         </button>
                       )}
+                    </div>
+                    <div className="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-4 sm:p-5 shadow-xs text-sm leading-relaxed whitespace-pre-wrap font-sans select-text">
+                      {msg.content}
+                    </div>
+                  </div>
+                );
+              } else {
+                const isStreaming = String(msg.id).includes('streaming');
+                return (
+                  <div key={msg.id || index} className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between text-xs text-[var(--muted)] font-medium">
+                      <div className="flex items-center gap-2">
+                        <span className="flex items-center gap-1 text-indigo-600 dark:text-indigo-400 font-semibold">
+                          <Bot className="w-3.5 h-3.5" />
+                          <span>AI 英文修飾助手</span>
+                        </span>
+                        <span>•</span>
+                        <span className={`px-2 py-0.5 rounded text-[11px] font-semibold border ${
+                          isRound1
+                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                            : 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20'
+                        }`}>
+                          {isRound1 ? '✨ 英文修飾解析 (搭配專屬 Skill)' : `💬 上下文追加答覆 (Round ${msg.roundNumber})`}
+                        </span>
+                      </div>
 
-                      {isStreaming && (
-                        <button
-                          onClick={onStopThinking}
-                          className="flex items-center gap-1 text-[11px] text-amber-500 hover:text-amber-600 font-medium cursor-pointer"
-                        >
-                          <Square className="w-3 h-3 fill-current" />
-                          <span>停止生成</span>
-                        </button>
+                      <div className="flex items-center gap-2">
+                        {!isStreaming && msg.content && (
+                          <button
+                            onClick={() => handleCopyText(msg.id || index, msg.content)}
+                            className="flex items-center gap-1 text-[11px] text-[var(--muted)] hover:text-indigo-600 dark:hover:text-indigo-400 font-medium cursor-pointer transition py-0.5 px-2 rounded-lg hover:bg-[var(--background)] border border-transparent hover:border-[var(--border)]"
+                            title="點擊複製修飾後英文全文"
+                          >
+                            {copiedId === (msg.id || index) ? (
+                              <>
+                                <Check className="w-3 h-3 text-emerald-500" />
+                                <span className="text-emerald-500 font-semibold">已複製英文</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3 h-3" />
+                                <span>複製修飾英文</span>
+                              </>
+                            )}
+                          </button>
+                        )}
+
+                        {isStreaming && (
+                          <button
+                            onClick={onStopThinking}
+                            className="flex items-center gap-1 text-[11px] text-amber-500 hover:text-amber-600 font-medium cursor-pointer"
+                          >
+                            <Square className="w-3 h-3 fill-current" />
+                            <span>停止生成</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-5 sm:p-6 shadow-xs prose prose-sm dark:prose-invert max-w-none select-text prose-headings:font-semibold prose-a:text-indigo-600 prose-pre:bg-[var(--background)] prose-pre:border prose-pre:border-[var(--border)] [&_blockquote]:border-l-4 [&_blockquote]:border-indigo-500 [&_blockquote]:bg-indigo-500/10 [&_blockquote]:dark:bg-indigo-500/15 [&_blockquote]:py-3 [&_blockquote]:px-4.5 [&_blockquote]:rounded-r-2xl [&_blockquote]:my-3 [&_blockquote]:not-italic [&_blockquote]:text-[var(--foreground)] [&_blockquote]:font-medium [&_blockquote]:select-text [&_blockquote]:cursor-text [&_blockquote]:shadow-2xs [&_blockquote]:tracking-wide [&_hr]:my-5 [&_hr]:border-[var(--border)]">
+                      {isStreaming && !msg.content ? (
+                        <div className="flex items-center gap-2 text-xs text-[var(--muted)] py-2">
+                          <div className="flex space-x-1">
+                            <div className="w-2 h-2 rounded-full bg-indigo-600 animate-bounce"></div>
+                            <div className="w-2 h-2 rounded-full bg-indigo-600 animate-bounce [animation-delay:0.2s]"></div>
+                            <div className="w-2 h-2 rounded-full bg-indigo-600 animate-bounce [animation-delay:0.4s]"></div>
+                          </div>
+                          <span>AI 正在思考並重構英文...</span>
+                        </div>
+                      ) : (
+                        <div className="leading-relaxed text-sm space-y-3 select-text">
+                          <div dangerouslySetInnerHTML={renderMarkdown(msg.content)} />
+                          {isStreaming && (
+                            <span className="inline-block w-2 h-4 ml-1 bg-indigo-500 animate-pulse align-middle" />
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
-                  <div className="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-5 sm:p-6 shadow-xs prose prose-sm dark:prose-invert max-w-none select-text prose-headings:font-semibold prose-a:text-indigo-600 prose-pre:bg-[var(--background)] prose-pre:border prose-pre:border-[var(--border)] [&_blockquote]:border-l-4 [&_blockquote]:border-indigo-500 [&_blockquote]:bg-indigo-500/10 [&_blockquote]:dark:bg-indigo-500/15 [&_blockquote]:py-3 [&_blockquote]:px-4.5 [&_blockquote]:rounded-r-2xl [&_blockquote]:my-3 [&_blockquote]:not-italic [&_blockquote]:text-[var(--foreground)] [&_blockquote]:font-medium [&_blockquote]:select-text [&_blockquote]:cursor-text [&_blockquote]:shadow-2xs [&_blockquote]:tracking-wide [&_hr]:my-5 [&_hr]:border-[var(--border)]">
-                    {isStreaming && !msg.content ? (
-                      <div className="flex items-center gap-2 text-xs text-[var(--muted)] py-2">
-                        <div className="flex space-x-1">
-                          <div className="w-2 h-2 rounded-full bg-indigo-600 animate-bounce"></div>
-                          <div className="w-2 h-2 rounded-full bg-indigo-600 animate-bounce [animation-delay:0.2s]"></div>
-                          <div className="w-2 h-2 rounded-full bg-indigo-600 animate-bounce [animation-delay:0.4s]"></div>
-                        </div>
-                        <span>AI 正在思考並重構英文...</span>
-                      </div>
-                    ) : (
-                      <div className="leading-relaxed text-sm space-y-3 select-text">
-                        <div dangerouslySetInnerHTML={renderMarkdown(msg.content)} />
-                        {isStreaming && (
-                          <span className="inline-block w-2 h-4 ml-1 bg-indigo-500 animate-pulse align-middle" />
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            }
-          })
+                );
+              }
+            })}
+          </>
         )}
 
         {/* Error Card with Retry Button (Option 3) */}
@@ -331,21 +406,24 @@ export default function ChatArea({
           <div className="flex flex-col gap-2 animate-in fade-in">
             <div className="flex items-center gap-2 text-xs text-red-500 font-semibold">
               <AlertCircle className="w-4 h-4" />
-              <span>連線發生異常</span>
+              <span>連線或執行異常 (Error Details)</span>
             </div>
             <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-4 sm:p-5 text-xs space-y-3">
               <div className="text-[var(--foreground)] font-medium">
+                後端或 AI 模型回傳了以下錯誤訊息：
+              </div>
+              <div className="font-mono text-xs whitespace-pre-wrap select-all bg-[var(--background)] p-3 rounded-xl border border-red-500/20 text-red-600 dark:text-red-400 break-words max-h-56 overflow-y-auto leading-relaxed shadow-2xs">
                 {errorInfo.message || '無法取得 AI 回應 (連線逾時或 API 速率限制)。'}
               </div>
-              <div className="text-[var(--muted)]">
-                您的原始文本已妥善保存，請點擊下方按鈕重新發送請求。
+              <div className="text-[var(--muted)] text-[11px]">
+                💡 您的輸入草稿已為您妥善保存，確認錯誤原因後可點擊下方按鈕立即重試。
               </div>
               <button
                 onClick={onRetry}
                 className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-xs shadow-xs transition cursor-pointer"
               >
                 <RotateCw className="w-3.5 h-3.5" />
-                <span>點擊重試</span>
+                <span>點擊重試 🔄</span>
               </button>
             </div>
           </div>

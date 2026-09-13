@@ -21,6 +21,7 @@ export default function App() {
   const [conversations, setConversations] = useState([]);
   const [currentConversationId, setCurrentConversationId] = useState(null);
   const [messages, setMessages] = useState([]);
+  const [originalDraftText, setOriginalDraftText] = useState('');
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorInfo, setErrorInfo] = useState(null);
@@ -84,6 +85,7 @@ export default function App() {
     saveDraftForCurrent();
     setCurrentConversationId(null);
     setMessages([]);
+    setOriginalDraftText('');
     setErrorInfo(null);
     setInput(drafts['new_chat'] || '');
   };
@@ -97,6 +99,8 @@ export default function App() {
       const data = await fetchConversationDetails(id);
       setCurrentConversationId(id);
       setMessages(data.messages || []);
+      const draft = data.rawSubmissionText || (data.messages && data.messages.find((m) => m.senderType === 'USER' && m.roundNumber === 1)?.content) || '';
+      setOriginalDraftText(draft);
       setInput(drafts[id] || '');
     } catch (err) {
       alert(err.message || '讀取對話失敗');
@@ -134,11 +138,98 @@ export default function App() {
     }
   };
 
-  // Send message with End-to-End Streaming
-  const handleSend = async (overrideText) => {
-    const text = (overrideText || input).trim();
-    if (!text || isLoading) return;
+  // 執行第 1 輪英文修飾 (Polish)
+  const executeSendPolish = async (text) => {
+    lastPendingTextRef.current = text;
+    setOriginalDraftText(text);
+    setErrorInfo(null);
+    setIsLoading(true);
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    const userMsgId = 'user-r1-' + Date.now();
+    const aiStreamingId = 'ai-streaming-' + Date.now();
+
+    const tempUserMsg = {
+      id: userMsgId,
+      senderType: 'USER',
+      content: text,
+      roundNumber: 1,
+      createdAt: new Date().toISOString()
+    };
+    const tempAiMsg = {
+      id: aiStreamingId,
+      senderType: 'AI',
+      content: '',
+      roundNumber: 1,
+      createdAt: new Date().toISOString()
+    };
+    setMessages([tempUserMsg, tempAiMsg]);
+    setInput('');
+
+    try {
+      const streamResult = await createPolishConversationStream({
+        rawText: text,
+        customApiKey: apiKey,
+        onMetadata: (metadata) => {
+          setCurrentConversationId(metadata.conversationId);
+          const newConv = {
+            id: metadata.conversationId,
+            title: metadata.title,
+            mode: metadata.mode || 'POLISH',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+          setConversations((prev) => [newConv, ...prev.filter((c) => c.id !== metadata.conversationId)]);
+
+          // 若後端返回了持久化 User 訊息 ID，立即更新 ID
+          if (metadata.userMessageId) {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === userMsgId ? { ...m, id: metadata.userMessageId } : m
+              )
+            );
+          }
+        },
+        onDelta: (chunk, accumulatedText) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === aiStreamingId ? { ...m, content: accumulatedText } : m
+            )
+          );
+        },
+        signal: controller.signal
+      });
+
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === aiStreamingId
+            ? { ...m, id: streamResult.aiMessageId || ('ai-' + Date.now()), content: streamResult.fullText }
+            : m
+        )
+      );
+
+      setDrafts((prev) => {
+        const next = { ...prev };
+        delete next['new_chat'];
+        return next;
+      });
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        return;
+      }
+      // 僅移除未完成的串流中 AI 訊息，保留使用者輸入草稿與錯誤原文提示
+      setMessages((prev) => prev.filter((m) => m.id !== aiStreamingId));
+      setErrorInfo({ message: err.message, text });
+    } finally {
+      setIsLoading(false);
+      abortControllerRef.current = null;
+    }
+  };
+
+  // 執行後續追加問答 (Follow-up)
+  const executeSendFollowUp = async (text, convId, baseMessages) => {
     lastPendingTextRef.current = text;
     setErrorInfo(null);
     setIsLoading(true);
@@ -146,131 +237,89 @@ export default function App() {
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
-    if (!currentConversationId || messages.length === 0) {
-      // First round: Polish
-      const tempUserMsg = {
-        id: 'temp-user',
-        senderType: 'USER',
-        content: text,
-        roundNumber: 1,
-        createdAt: new Date().toISOString()
-      };
-      const tempAiMsg = {
-        id: 'temp-ai-streaming',
-        senderType: 'AI',
-        content: '',
-        roundNumber: 1,
-        createdAt: new Date().toISOString()
-      };
-      setMessages([tempUserMsg, tempAiMsg]);
-      setInput('');
+    const nextRound = Math.floor(baseMessages.length / 2) + 1;
+    const userMsgId = 'user-r' + nextRound + '-' + Date.now();
+    const aiStreamingId = 'ai-streaming-' + Date.now();
+    const tempUserMsg = {
+      id: userMsgId,
+      senderType: 'USER',
+      content: text,
+      roundNumber: nextRound,
+      createdAt: new Date().toISOString()
+    };
+    const tempAiMsg = {
+      id: aiStreamingId,
+      senderType: 'AI',
+      content: '',
+      roundNumber: nextRound,
+      createdAt: new Date().toISOString()
+    };
 
-      try {
-        const streamResult = await createPolishConversationStream({
-          rawText: text,
-          customApiKey: apiKey,
-          onMetadata: (metadata) => {
-            setCurrentConversationId(metadata.conversationId);
-            const newConv = {
-              id: metadata.conversationId,
-              title: metadata.title,
-              mode: metadata.mode || 'POLISH',
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString()
-            };
-            setConversations((prev) => [newConv, ...prev.filter((c) => c.id !== metadata.conversationId)]);
-          },
-          onDelta: (chunk, accumulatedText) => {
+    setMessages([...baseMessages, tempUserMsg, tempAiMsg]);
+    setInput('');
+
+    try {
+      const streamResult = await sendFollowUpMessageStream({
+        conversationId: convId,
+        message: text,
+        customApiKey: apiKey,
+        onMetadata: (metadata) => {
+          if (metadata && metadata.userMessageId) {
             setMessages((prev) =>
               prev.map((m) =>
-                m.id === 'temp-ai-streaming' ? { ...m, content: accumulatedText } : m
+                m.id === userMsgId ? { ...m, id: metadata.userMessageId } : m
               )
             );
-          },
-          signal: controller.signal
-        });
+          }
+        },
+        onDelta: (chunk, accumulatedText) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === aiStreamingId ? { ...m, content: accumulatedText } : m
+            )
+          );
+        },
+        signal: controller.signal
+      });
 
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === 'temp-ai-streaming'
-              ? { ...m, id: streamResult.aiMessageId || ('ai-' + Date.now()), content: streamResult.fullText }
-              : m
-          )
-        );
-
-        setDrafts((prev) => {
-          const next = { ...prev };
-          delete next['new_chat'];
-          return next;
-        });
-      } catch (err) {
-        if (err.name === 'AbortError') {
-          return;
-        }
-        setErrorInfo({ message: err.message, text });
-      } finally {
-        setIsLoading(false);
-        abortControllerRef.current = null;
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === aiStreamingId
+            ? { ...m, id: streamResult.aiMessageId || ('ai-' + Date.now()), content: streamResult.fullText }
+            : m
+        )
+      );
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === convId ? { ...c, updatedAt: new Date().toISOString() } : c
+        )
+      );
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        return;
       }
+      // 僅移除未成功的串流中 AI 訊息，保留該輪使用者問題與錯誤原文提示
+      setMessages([...baseMessages, tempUserMsg]);
+      setErrorInfo({ message: err.message, text });
+    } finally {
+      setIsLoading(false);
+      abortControllerRef.current = null;
+    }
+  };
+
+  // Send message with End-to-End Streaming
+  const handleSend = async (overrideText) => {
+    const text = (overrideText || input).trim();
+    if (!text || isLoading) return;
+
+    // 僅過濾尚未完成的 streaming AI 訊息，絕不清除使用者的歷史訊息與原始草稿
+    const cleanMsgs = messages.filter((m) => !String(m.id).includes('streaming'));
+    const hasCompletedAiMsg = cleanMsgs.some((m) => m.senderType === 'AI');
+
+    if (!currentConversationId || !hasCompletedAiMsg) {
+      executeSendPolish(text);
     } else {
-      // Follow-up
-      const nextRound = Math.floor(messages.length / 2) + 1;
-      const userMsgId = 'temp-user-' + Date.now();
-      const aiStreamingId = 'temp-ai-streaming-' + Date.now();
-      const tempUserMsg = {
-        id: userMsgId,
-        senderType: 'USER',
-        content: text,
-        roundNumber: nextRound,
-        createdAt: new Date().toISOString()
-      };
-      const tempAiMsg = {
-        id: aiStreamingId,
-        senderType: 'AI',
-        content: '',
-        roundNumber: nextRound,
-        createdAt: new Date().toISOString()
-      };
-
-      setMessages((prev) => [...prev, tempUserMsg, tempAiMsg]);
-      setInput('');
-
-      try {
-        const streamResult = await sendFollowUpMessageStream({
-          conversationId: currentConversationId,
-          message: text,
-          customApiKey: apiKey,
-          onDelta: (chunk, accumulatedText) => {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === aiStreamingId ? { ...m, content: accumulatedText } : m
-              )
-            );
-          },
-          signal: controller.signal
-        });
-
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === aiStreamingId
-              ? { ...m, id: streamResult.aiMessageId || ('ai-' + Date.now()), content: streamResult.fullText }
-              : m
-          )
-        );
-        setConversations((prev) =>
-          prev.map((c) =>
-            c.id === currentConversationId ? { ...c, updatedAt: new Date().toISOString() } : c
-          )
-        );
-      } catch (err) {
-        if (err.name === 'AbortError') {
-          return;
-        }
-        setErrorInfo({ message: err.message, text });
-      } finally {
-        setIsLoading(false);
-        abortControllerRef.current = null;
-      }
+      executeSendFollowUp(text, currentConversationId, cleanMsgs);
     }
   };
 
@@ -282,15 +331,27 @@ export default function App() {
     setIsLoading(false);
     // Restore text back to input
     setInput(lastPendingTextRef.current || '');
-    // Remove temporary unreplied or streaming messages from view
-    setMessages((prev) => prev.filter((m) => !String(m.id).startsWith('temp-')));
+    // 僅移除串流中的佔位 AI 訊息
+    setMessages((prev) => prev.filter((m) => !String(m.id).includes('streaming')));
   };
 
   const handleRetry = () => {
-    if (errorInfo && errorInfo.text) {
-      const retryText = errorInfo.text;
-      setErrorInfo(null);
-      handleSend(retryText);
+    if (!errorInfo || !errorInfo.text) return;
+    const retryText = errorInfo.text;
+    // 立即清除錯誤狀態，使紅色錯誤框與重試按鈕即刻消失
+    setErrorInfo(null);
+
+    const cleanMsgs = messages.filter((m) => !String(m.id).includes('streaming'));
+    const hasCompletedAiMsg = cleanMsgs.some((m) => m.senderType === 'AI');
+
+    if (!currentConversationId || !hasCompletedAiMsg) {
+      setCurrentConversationId(null);
+      setMessages([]);
+      executeSendPolish(retryText);
+    } else {
+      const baseMsgs = cleanMsgs.filter((m) => m.content !== retryText);
+      setMessages(baseMsgs);
+      executeSendFollowUp(retryText, currentConversationId, baseMsgs);
     }
   };
 
@@ -299,7 +360,7 @@ export default function App() {
   };
 
   const currentConv = conversations.find((c) => c.id === currentConversationId);
-  const isFollowUp = !!currentConversationId && messages.length > 0;
+  const isFollowUp = !!currentConversationId && messages.some((m) => m.senderType === 'AI' && !String(m.id).includes('streaming'));
 
   return (
     <div className="h-screen flex flex-col font-sans overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
@@ -326,6 +387,7 @@ export default function App() {
         <main className="flex-1 flex flex-col bg-[var(--background)] overflow-hidden relative">
           <ChatArea
             currentConversation={currentConv}
+            originalDraftText={originalDraftText}
             messages={messages}
             isLoading={isLoading}
             errorInfo={errorInfo}
