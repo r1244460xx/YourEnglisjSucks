@@ -169,7 +169,10 @@ class ConversationControllerTest {
         mockMvc.perform(post("/api/conversations/polish")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message").isNotEmpty())
+                .andExpect(jsonPath("$.rawError").isNotEmpty());
     }
 
     @Test
@@ -180,7 +183,10 @@ class ConversationControllerTest {
         mockMvc.perform(post("/api/conversations/polish")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message").isNotEmpty())
+                .andExpect(jsonPath("$.rawError").isNotEmpty());
     }
 
     @Test

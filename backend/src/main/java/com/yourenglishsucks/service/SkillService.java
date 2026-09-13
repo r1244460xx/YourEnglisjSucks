@@ -182,6 +182,17 @@ public class SkillService {
      * 3. 具備容錯機制，若非標準 JSON 則平滑回退為原文字串。
      */
     public String formatPolishJsonToMarkdown(String jsonOrText) {
+        return formatPolishJsonToMarkdown(jsonOrText, null);
+    }
+
+    /**
+     * 後端配套措施：將 Gemini 回傳的嚴格 JSON 結構轉換為標準 Markdown 排版。
+     * 確保前端依然擁有：
+     * 1. 頂部獨立 > blockquote 引用區塊（包含修改前原始草稿，以及自然道地口語版與專業商務正式版並列對照）。
+     * 2. 乾淨清爽的四階段條列分析。
+     * 3. 具備容錯機制，若非標準 JSON 則平滑回退為原文字串。
+     */
+    public String formatPolishJsonToMarkdown(String jsonOrText, String rawEnglishText) {
         if (jsonOrText == null || jsonOrText.isBlank()) {
             return "";
         }
@@ -199,12 +210,23 @@ public class SkillService {
         trimmed = trimmed.trim();
 
         if (!trimmed.startsWith("{")) {
+            if (rawEnglishText != null && !rawEnglishText.isBlank() && !jsonOrText.contains("修改前英文原文本")) {
+                return "### 📝 修改前英文原文本 (Original Draft)\n> " +
+                        rawEnglishText.trim().replace("\n", "\n> ") + "\n\n---\n\n" + jsonOrText;
+            }
             return jsonOrText;
         }
 
         try {
             JsonNode root = objectMapper.readTree(trimmed);
             StringBuilder sb = new StringBuilder();
+
+            // 0. 📝 修改前英文原文本 (Original Draft)
+            if (rawEnglishText != null && !rawEnglishText.isBlank()) {
+                sb.append("### 📝 修改前英文原文本 (Original Draft)\n");
+                sb.append("> ").append(rawEnglishText.trim().replace("\n", "\n> ")).append("\n\n");
+                sb.append("---\n\n");
+            }
 
             // 1. 🌟 修飾後英文全文
             sb.append("### 🌟 修飾後英文全文 (Refined English Text)\n\n");
@@ -290,6 +312,20 @@ public class SkillService {
             2. "reply" 欄位值中可自由使用標準 Markdown 排版（如粗體、條列、引號 blockquote、程式碼等）。
             3. 嚴禁任何開場問候與客套廢話。
             """;
+    }
+
+    /**
+     * 追加發問 (Follow-up) 的 responseSchema。
+     * 強制要求 Gemini 輸出包含 reply 欄位的 JSON 物件。
+     */
+    public java.util.Map<String, Object> getFollowUpResponseSchema() {
+        return java.util.Map.of(
+            "type", "OBJECT",
+            "properties", java.util.Map.of(
+                "reply", java.util.Map.of("type", "STRING", "description", "針對追加問題的繁體中文與道地英文解答內容")
+            ),
+            "required", java.util.List.of("reply")
+        );
     }
 
     /**

@@ -332,7 +332,11 @@ public class GeminiService {
         Map<String, String> lastMessage = conversationHistory.get(conversationHistory.size() - 1);
         String lastText = lastMessage.getOrDefault("text", "");
 
-        if (systemInstruction != null) {
+        // 判斷是否為追加發問 (Follow-up)
+        boolean isFollowUp = (systemInstruction != null && systemInstruction.contains("追加疑問"))
+                || conversationHistory.size() > 1;
+
+        if (!isFollowUp) {
             // 第一輪修飾的模擬回覆 (遵循嚴格 JSON 結構規格)
             return """
                 {
@@ -366,9 +370,19 @@ public class GeminiService {
         } else {
             // 追加提問的模擬回覆 (遵循嚴格 JSON 結構規格)
             String safeText = lastText.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
+
+            // 針對使用者常問的 last night vs yesterday night 進行專業母語解析
+            if (lastText.toLowerCase().contains("last night") || lastText.toLowerCase().contains("yesterday night")) {
+                return """
+                    {
+                      "reply": "非常好的問題！這正是很多英語學習者的典型盲點：\\n\\n💡 **母語教練深度解析**：\\n- **Last night** 才是道地的母語習慣表達！\\n- 在英語中，「昨天晚上」固定使用 **last night**，英語母語人士**極少**使用 *yesterday night*（文法上雖然能理解，但一聽就是非常明顯的中式直譯 Chinglish）。\\n- 英語的時間搭配規律如下：\\n  - 昨天早上：**yesterday morning**\\n  - 昨天下午：**yesterday afternoon**\\n  - 昨天晚上：必須切換為 **last night**！\\n  - 昨夜深夜：**late last night**\\n\\n因此原文：\\n> *\\"Yesterday night, my boss open a meeting...\\"*\\n\\n應直接改為最自然的說法：\\n> 🗣️ **口語推薦**：*\\"Last night, my boss called a meeting...\\"*\\n> 💼 **商務正式**：*\\"My manager convened a meeting yesterday evening...\\"*\\n\\n（註：商務正式書信中亦常用 *yesterday evening*，但口語一律是 *last night*！）"
+                    }
+                    """;
+            }
+
             return """
                 {
-                  "reply": "針對您的追加問題：「%s」\\n\\n如果是熟識的同事或非正式場合，可以用更口語有親和力的方式表達：\\n> *\\"Quick heads-up team: we hit a bump on the database connection, so launch is pushed back about a week. Thanks all!\\"*\\n\\n重點是：在同一個對話脈絡下，可以直接針對特定單字或情境繼續發問討論喔！"
+                  "reply": "針對您的追加發問：「%s」\\n\\n💡 **母語教練深入解析**：\\n- **語境建議**：如果是熟識的同事或非正式日常對話，可以善用更精簡生動的動詞片語：\\n  > *\\"Quick heads-up team: we ran into a small bump, so the release is pushed back about a week. Thanks all!\\"*\\n- **關鍵詞彙升級**：\\n  - **Quick heads-up**：北美職場 Slack/Teams 最常用的開場提醒。\\n  - **pushed back**：延期（比 delay 更口語自然）。\\n\\n在同一個對話脈絡下，您可以繼續針對任何單字、時態或替換說法提問喔！"
                 }
                 """.formatted(safeText);
         }

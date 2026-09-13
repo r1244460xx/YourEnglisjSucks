@@ -122,7 +122,7 @@ public class ConversationService {
                 () -> {
                     try {
                         String rawJson = fullReply.toString();
-                        String markdownReply = skillService.formatPolishJsonToMarkdown(rawJson);
+                        String markdownReply = skillService.formatPolishJsonToMarkdown(rawJson, rawText);
 
                         // 儲存完整 AI 訊息 (content 存 Markdown 格式保證介面載入渲染，metadata 存 rawJson 供特徵分析)
                         ChatMessage aiMessage = new ChatMessage(conversationId, "AI", markdownReply, 1);
@@ -144,9 +144,13 @@ public class ConversationService {
                     }
                 },
                 error -> {
+                    String errorMsg = error.getMessage() != null && !error.getMessage().isBlank()
+                            ? error.getMessage()
+                            : error.toString();
+                    log.error("首次英文修飾串流發生異常: {}", errorMsg, error);
                     try {
-                        emitter.send(SseEmitter.event().name("error").data(Map.of("error", error.getMessage())));
-                        emitter.completeWithError(error);
+                        emitter.send(SseEmitter.event().name("error").data(Map.of("error", errorMsg, "message", errorMsg)));
+                        emitter.complete();
                     } catch (IOException ignored) {}
                 }
         );
@@ -204,11 +208,13 @@ public class ConversationService {
         StringBuilder fullReply = new StringBuilder();
 
         String followUpSystemPrompt = skillService.getFollowUpSystemPrompt();
+        Map<String, Object> followUpSchema = skillService.getFollowUpResponseSchema();
 
         geminiService.streamContent(
                 followUpSystemPrompt,
                 history,
                 request.apiKey(),
+                followUpSchema,
                 chunk -> {
                     try {
                         fullReply.append(chunk);
@@ -241,9 +247,13 @@ public class ConversationService {
                     }
                 },
                 error -> {
+                    String errorMsg = error.getMessage() != null && !error.getMessage().isBlank()
+                            ? error.getMessage()
+                            : error.toString();
+                    log.error("追加發問串流發生異常: {}", errorMsg, error);
                     try {
-                        emitter.send(SseEmitter.event().name("error").data(Map.of("error", error.getMessage())));
-                        emitter.completeWithError(error);
+                        emitter.send(SseEmitter.event().name("error").data(Map.of("error", errorMsg, "message", errorMsg)));
+                        emitter.complete();
                     } catch (IOException ignored) {}
                 }
         );
@@ -288,7 +298,7 @@ public class ConversationService {
         );
 
         String rawReply = geminiService.generateContent(systemPrompt, history, request.apiKey(), responseSchema);
-        String formattedReply = skillService.formatPolishJsonToMarkdown(rawReply);
+        String formattedReply = skillService.formatPolishJsonToMarkdown(rawReply, rawText);
 
         // 5. 儲存 AI 第 1 輪訊息 (content 存 Markdown, metadata 存原始 JSON)
         ChatMessage aiMessage = new ChatMessage(conversation.getId(), "AI", formattedReply, 1);
@@ -347,7 +357,8 @@ public class ConversationService {
 
         // 呼叫 Gemini (帶 follow-up 系統指令規範 JSON 回覆)
         String followUpSystemPrompt = skillService.getFollowUpSystemPrompt();
-        String rawReply = geminiService.generateContent(followUpSystemPrompt, history, request.apiKey());
+        Map<String, Object> followUpSchema = skillService.getFollowUpResponseSchema();
+        String rawReply = geminiService.generateContent(followUpSystemPrompt, history, request.apiKey(), followUpSchema);
         String formattedReply = skillService.formatFollowUpJsonToText(rawReply);
 
         // 儲存 AI 回覆

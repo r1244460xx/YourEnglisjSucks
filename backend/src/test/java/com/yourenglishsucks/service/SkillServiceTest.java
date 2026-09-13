@@ -59,6 +59,24 @@ class SkillServiceTest {
     }
 
     @Test
+    @DisplayName("驗證當提供 rawEnglishText 時，Markdown 最上方會包含修改前原始文本引用區塊")
+    void testFormatPolishJsonWithRawEnglishText() {
+        String json = """
+            {
+              "refinedText": {
+                "casual": "Here is my revision.",
+                "formal": "Please see the revised draft below."
+              }
+            }
+            """;
+        String rawDraft = "I very like coffee.";
+
+        String markdown = skillService.formatPolishJsonToMarkdown(json, rawDraft);
+
+        assertThat(markdown).startsWith("### 📝 修改前英文原文本 (Original Draft)\n> I very like coffee.\n\n---\n\n### 🌟 修飾後英文全文");
+    }
+
+    @Test
     @DisplayName("驗證當輸出包含 ```json 標籤包裹時仍能正常解析")
     void testFormatPolishJsonWithCodeBlockTags() {
         String wrappedJson = """
