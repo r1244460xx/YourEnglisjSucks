@@ -119,14 +119,22 @@ public class ConversationService {
                 },
                 () -> {
                     try {
-                        // 儲存完整 AI 訊息
-                        ChatMessage aiMessage = new ChatMessage(conversationId, "AI", fullReply.toString(), 1);
+                        String rawJson = fullReply.toString();
+                        String markdownReply = skillService.formatPolishJsonToMarkdown(rawJson);
+
+                        // 儲存完整 AI 訊息 (content 存 Markdown 格式保證介面載入渲染，metadata 存 rawJson 供特徵分析)
+                        ChatMessage aiMessage = new ChatMessage(conversationId, "AI", markdownReply, 1);
+                        aiMessage.setMetadata(rawJson);
                         chatMessageRepository.save(aiMessage);
+
+                        submission.setHabitFeatures(rawJson);
+                        polishRawSubmissionRepository.save(submission);
 
                         emitter.send(SseEmitter.event().name("done").data(Map.of(
                                 "status", "completed",
                                 "aiMessageId", aiMessage.getId().toString(),
-                                "fullText", fullReply.toString()
+                                "fullText", markdownReply,
+                                "rawJson", rawJson
                         )));
                         emitter.complete();
                     } catch (Exception ex) {
@@ -193,8 +201,10 @@ public class ConversationService {
 
         StringBuilder fullReply = new StringBuilder();
 
+        String followUpSystemPrompt = skillService.getFollowUpSystemPrompt();
+
         geminiService.streamContent(
-                null,
+                followUpSystemPrompt,
                 history,
                 request.apiKey(),
                 chunk -> {
@@ -207,7 +217,11 @@ public class ConversationService {
                 },
                 () -> {
                     try {
-                        ChatMessage aiMsg = new ChatMessage(conversationId, "AI", fullReply.toString(), currentRound);
+                        String rawJson = fullReply.toString();
+                        String formattedReply = skillService.formatFollowUpJsonToText(rawJson);
+
+                        ChatMessage aiMsg = new ChatMessage(conversationId, "AI", formattedReply, currentRound);
+                        aiMsg.setMetadata(rawJson);
                         chatMessageRepository.save(aiMsg);
 
                         conversation.setUpdatedAt(aiMsg.getCreatedAt());
@@ -216,7 +230,8 @@ public class ConversationService {
                         emitter.send(SseEmitter.event().name("done").data(Map.of(
                                 "status", "completed",
                                 "aiMessageId", aiMsg.getId().toString(),
-                                "fullText", fullReply.toString()
+                                "fullText", formattedReply,
+                                "rawJson", rawJson
                         )));
                         emitter.complete();
                     } catch (Exception ex) {
@@ -269,11 +284,16 @@ public class ConversationService {
                 Map.of("role", "user", "text", userPrompt)
         );
 
-        String aiReply = geminiService.generateContent(systemPrompt, history, request.apiKey());
+        String rawReply = geminiService.generateContent(systemPrompt, history, request.apiKey());
+        String formattedReply = skillService.formatPolishJsonToMarkdown(rawReply);
 
-        // 5. 儲存 AI 第 1 輪訊息
-        ChatMessage aiMessage = new ChatMessage(conversation.getId(), "AI", aiReply, 1);
+        // 5. 儲存 AI 第 1 輪訊息 (content 存 Markdown, metadata 存原始 JSON)
+        ChatMessage aiMessage = new ChatMessage(conversation.getId(), "AI", formattedReply, 1);
+        aiMessage.setMetadata(rawReply);
         aiMessage = chatMessageRepository.save(aiMessage);
+
+        submission.setHabitFeatures(rawReply);
+        polishRawSubmissionRepository.save(submission);
 
         // 回傳完整對話物件
         List<ChatMessageResponse> messages = List.of(
@@ -292,7 +312,7 @@ public class ConversationService {
      * 針對同一對話追加發問 (Follow-up)：
      * 1. 驗證對話存在
      * 2. 存入使用者追加發問訊息 (round N)
-     * 3. 組合歷史上下文 (不帶 Polish Skill，直接發給 AI)
+     * 3. 組合歷史上下文 (發送專屬 follow-up 系統指令確保 JSON 格式)
      * 4. 存入 AI 回覆 (round N)
      */
     @Transactional
@@ -314,7 +334,7 @@ public class ConversationService {
         ChatMessage userMsg = new ChatMessage(conversationId, "USER", userQuery, currentRound);
         chatMessageRepository.save(userMsg);
 
-        // 組合歷史對話清單 (不帶 Polish Skill, 保留所有歷史訊息)
+        // 組合歷史對話清單 (保留所有歷史訊息)
         List<ChatMessage> allMessages = chatMessageRepository.findByConversationIdOrderByCreatedAtAsc(conversationId);
         List<Map<String, String>> history = new ArrayList<>();
         for (ChatMessage msg : allMessages) {
@@ -322,11 +342,14 @@ public class ConversationService {
             history.add(Map.of("role", role, "text", msg.getContent()));
         }
 
-        // 呼叫 Gemini (systemInstruction 為 null，標準 Chat 模式)
-        String aiReply = geminiService.generateContent(null, history, request.apiKey());
+        // 呼叫 Gemini (帶 follow-up 系統指令規範 JSON 回覆)
+        String followUpSystemPrompt = skillService.getFollowUpSystemPrompt();
+        String rawReply = geminiService.generateContent(followUpSystemPrompt, history, request.apiKey());
+        String formattedReply = skillService.formatFollowUpJsonToText(rawReply);
 
         // 儲存 AI 回覆
-        ChatMessage aiMsg = new ChatMessage(conversationId, "AI", aiReply, currentRound);
+        ChatMessage aiMsg = new ChatMessage(conversationId, "AI", formattedReply, currentRound);
+        aiMsg.setMetadata(rawReply);
         aiMsg = chatMessageRepository.save(aiMsg);
 
         // 更新對話最後活躍時間

@@ -27,7 +27,7 @@
   - 點擊後立即中斷請求，並**自動將原本發送的文本無損還原回輸入欄**，供使用者重新編輯或重新發問。
 
 ### 4. 文本長度上限與逾時設定
-- **原始文本長度上限**：單次英文修飾文本上限為 **4,000 字元**（介面即時顯示字數統計與剩餘額度）。
+- **原始文本長度上限**：單次英文修飾文本與追加發問上限調整為 **1,000 字元**（介面即時顯示字數統計與剩餘額度）。
 - **後端連線逾時**：設定為 **60 秒**，以因應長篇文章分析。
 
 ### 5. 追加發問上下文攜帶策略 (確認選項 B)
@@ -56,3 +56,17 @@
 - **Enter 鍵**：跳下一行（換行），並觸發輸入框高度自動向下延伸 (`auto-expanding textarea`)。
 - **Shift + Enter 鍵** 或 **點選送出按鈕**：送出文本。
 - **歷史載入**：左側邊欄與中央視窗歷史紀錄均一次載入全部。
+
+### 10. 模型參數與嚴格 JSON 結構化輸出模式 (Token 節省與格式保證)
+- **嚴格 JSON 回覆模式**：
+  - 啟用 Gemini API 的 `"responseMimeType": "application/json"`，配合 System Prompt 嚴格規範 JSON Schema（含 `refinedText`、`grammarAnalysis`、`rationale`、`idiomsAndUpgrades`）。
+  - 大幅節省樣板文字、標籤符號與無效前言的 Token 消耗，且格式絕不跑版。
+- **後端配套措施**：
+  - 後端 `SkillService.formatPolishJsonToMarkdown` 自動將純 JSON 回應解析並轉譯為包含 `> blockquote` 與條列結構的標準 Markdown。
+  - `ChatMessage.content` 儲存轉譯後的 Markdown（確保前端直接渲染相容與「複製修飾英文」按鈕體驗），同時 `ChatMessage.metadata` 與 `PolishRawSubmission.habitFeatures` 保存完整原始 JSON 結構，供後續寫作習慣分析擴充。
+- **模型超參數配置**：
+  - `temperature`：固定為 **0.55**（兼顧創意修飾與結構精準度）。
+  - `topP`：固定為 **0.95**。
+  - `maxOutputTokens`：固定為 **1000**。
+  - `單次輸入長度上限`：前端與後端皆強制限制為 **1000** 字元。
+

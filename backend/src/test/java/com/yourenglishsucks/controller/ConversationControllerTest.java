@@ -161,9 +161,9 @@ class ConversationControllerTest {
     }
 
     @Test
-    @DisplayName("Use Case 4: 輸入文本超過 4000 字元限制時應被拒絕 (400 Bad Request)")
+    @DisplayName("Use Case 4: 輸入文本超過 1000 字元限制時應被拒絕 (400 Bad Request)")
     void testMaxLengthValidation() throws Exception {
-        String overlyLongText = "a".repeat(4001);
+        String overlyLongText = "a".repeat(1001);
         PolishRequest request = new PolishRequest(overlyLongText, null);
 
         mockMvc.perform(post("/api/conversations/polish")

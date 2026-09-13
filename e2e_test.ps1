@@ -94,15 +94,15 @@ if ($matched) {
 }
 
 # Step 8: Input validations
-Write-Host "`n[Step 8] Testing 4000 character limit and blank input validations..."
-$tooLong = "A" * 4001
+Write-Host "`n[Step 8] Testing 1000 character limit and blank input validations..."
+$tooLong = "A" * 1001
 $badBody1 = @{ rawText = $tooLong } | ConvertTo-Json
 try {
     Invoke-RestMethod -Uri "$BaseUrl/api/conversations/polish" -Method Post -Body $badBody1 -ContentType "application/json"
-    Write-Error "Expected 400 Bad Request for >4000 chars, but succeeded!"
+    Write-Error "Expected 400 Bad Request for >1000 chars, but succeeded!"
     exit 1
 } catch {
-    Write-Host "  -> [PASSED] Rejected >4000 characters with 400 Bad Request"
+    Write-Host "  -> [PASSED] Rejected >1000 characters with 400 Bad Request"
 }
 
 $badBody2 = @{ rawText = "   " } | ConvertTo-Json

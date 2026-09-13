@@ -40,6 +40,15 @@ public class GeminiService {
     @Value("${gemini.mock:true}")
     private boolean mockMode;
 
+    @Value("${gemini.temperature:0.55}")
+    private double temperature;
+
+    @Value("${gemini.top-p:0.95}")
+    private double topP;
+
+    @Value("${gemini.max-output-tokens:1000}")
+    private int maxOutputTokens;
+
     public GeminiService(ObjectMapper objectMapper) {
         this.restClient = RestClient.builder().build();
         this.objectMapper = objectMapper;
@@ -102,11 +111,13 @@ public class GeminiService {
         }
         requestBody.put("contents", contents);
 
-        // 3. Generation Config
-        requestBody.put("generationConfig", Map.of(
-            "temperature", 0.7,
-            "maxOutputTokens", 4096
-        ));
+        // 3. Generation Config (嚴格限制 JSON 回覆、1000 Tokens、temperature 0.55、topP 0.95)
+        Map<String, Object> genConfig = new HashMap<>();
+        genConfig.put("temperature", temperature);
+        genConfig.put("topP", topP);
+        genConfig.put("maxOutputTokens", maxOutputTokens);
+        genConfig.put("responseMimeType", "application/json");
+        requestBody.put("generationConfig", genConfig);
 
         try {
             String responseJson = restClient.post()
@@ -202,10 +213,12 @@ public class GeminiService {
                     ));
                 }
                 requestBody.put("contents", contents);
-                requestBody.put("generationConfig", Map.of(
-                        "temperature", 0.7,
-                        "maxOutputTokens", 4096
-                ));
+                Map<String, Object> genConfig = new HashMap<>();
+                genConfig.put("temperature", temperature);
+                genConfig.put("topP", topP);
+                genConfig.put("maxOutputTokens", maxOutputTokens);
+                genConfig.put("responseMimeType", "application/json");
+                requestBody.put("generationConfig", genConfig);
 
                 String jsonBody = objectMapper.writeValueAsString(requestBody);
 
@@ -280,45 +293,51 @@ public class GeminiService {
 
     private String generateMockResponse(String systemInstruction, List<Map<String, String>> conversationHistory) {
         if (conversationHistory == null || conversationHistory.isEmpty()) {
-            return "尚無輸入內容。";
+            return "{\"reply\":\"尚無輸入內容。\"}";
         }
 
         Map<String, String> lastMessage = conversationHistory.get(conversationHistory.size() - 1);
         String lastText = lastMessage.getOrDefault("text", "");
 
         if (systemInstruction != null) {
-            // 第一輪修飾的模擬回覆
+            // 第一輪修飾的模擬回覆 (遵循嚴格 JSON 結構規格)
             return """
-                > 💡 *【提示】尚未配置 GEMINI_API_KEY，以下為系統模擬的英文修飾效果。您可以在介面右上角設定 API Key 或寫入後端 application.yml。*
-
-                ### 🌟 修飾後英文全文 (Refined English Text)
-                - **🗣️ 自然道地口語版 (Natural & Conversational)**:
-                  "I'm writing to let you know about our current project status. We ran into a small issue with the database setup, so the release might be delayed by a week or two. Thanks for your patience!"
-                - **💼 專業商務正式版 (Professional & Formal)**:
-                  "I am writing to provide an update on our project schedule. Due to unforeseen database connectivity challenges, our anticipated launch date has been postponed by approximately two weeks. We appreciate your understanding and flexibility."
-
-                ### 🔍 語病與道地性解析 (Chinglish & Grammar Analysis)
-                - **for update** ➔ 不定詞應使用 `to update` 或 `to give you an update`，`for` 後面通常接名詞或動名詞。
-                - **because we have error** ➔ 搭配動詞應使用 `encountered an error` 或 `ran into an issue` 更為道地。
-
-                ### 💡 修改原因與語境解析 (Rationale & Insights)
-                - **語氣得體性**: 商務語境中使用 `unforeseen challenges` 比單純直白抱怨 `we have error` 顯得更加專業且負責。
-                - **口語生活感**: 口語溝通中以 `ran into a small issue` 表達碰上小問題，親切自然。
-
-                ### 📚 實用道地片語與延伸替換 (Idioms & Upgrades)
-                - **hit a snag / run into a bump**：遇到突發小阻礙。
-                  - *例句*：We hit a small snag during deployment, but we've already fixed it. (我們部署時遇到一點小阻礙，但已經修復了。)
+                {
+                  "refinedText": {
+                    "casual": "I'm writing to let you know about our current project status. We ran into a small issue with the database setup, so the release might be delayed by a week or two. Thanks for your patience!",
+                    "formal": "I am writing to provide an update on our project schedule. Due to unforeseen database connectivity challenges, our anticipated launch date has been postponed by approximately two weeks. We appreciate your understanding and flexibility."
+                  },
+                  "grammarAnalysis": [
+                    {
+                      "original": "for update",
+                      "explanation": "不定詞應使用 to update 或 to give you an update，for 後面通常接名詞或動名詞。"
+                    },
+                    {
+                      "original": "because we have error",
+                      "explanation": "搭配動詞應使用 encountered an error 或 ran into an issue 更為道地。"
+                    }
+                  ],
+                  "rationale": [
+                    "語氣得體性：商務語境中使用 unforeseen challenges 比單純直白抱怨 we have error 顯得更加專業且負責。",
+                    "口語生活感：口語溝通中以 ran into a small issue 表達碰上小問題，親切自然。"
+                  ],
+                  "idiomsAndUpgrades": [
+                    {
+                      "phrase": "hit a snag / run into a bump",
+                      "meaning": "遇到突發小阻礙。",
+                      "example": "We hit a small snag during deployment, but we've already fixed it. (我們部署時遇到一點小阻礙，但已經修復了。)"
+                    }
+                  ]
+                }
                 """;
         } else {
-            // 追加提問的模擬回覆
+            // 追加提問的模擬回覆 (遵循嚴格 JSON 結構規格)
+            String safeText = lastText.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
             return """
-                針對您的追加問題：「%s」
-
-                如果是熟識的同事或非正式場合，可以用更口語有親和力的方式表達：
-                > *"Quick heads-up team: we hit a bump on the database connection, so launch is pushed back about a week. Thanks all!"*
-
-                重點是：在同一個對話脈絡下，可以直接針對特定單字或情境繼續發問討論喔！
-                """.formatted(lastText);
+                {
+                  "reply": "針對您的追加問題：「%s」\\n\\n如果是熟識的同事或非正式場合，可以用更口語有親和力的方式表達：\\n> *\\"Quick heads-up team: we hit a bump on the database connection, so launch is pushed back about a week. Thanks all!\\"*\\n\\n重點是：在同一個對話脈絡下，可以直接針對特定單字或情境繼續發問討論喔！"
+                }
+                """.formatted(safeText);
         }
     }
 }

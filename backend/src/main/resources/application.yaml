@@ -23,6 +23,9 @@ gemini:
   api-key: ${GEMINI_API_KEY:}
   model: ${GEMINI_MODEL:gemini-2.5-flash}
   mock: ${GEMINI_MOCK:false}
+  temperature: ${GEMINI_TEMPERATURE:0.55}
+  top-p: ${GEMINI_TOP_P:0.95}
+  max-output-tokens: ${GEMINI_MAX_OUTPUT_TOKENS:1000}
 
 ---
 spring:

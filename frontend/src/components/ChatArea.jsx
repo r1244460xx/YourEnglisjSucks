@@ -18,9 +18,29 @@ export default function ChatArea({
   const [copiedId, setCopiedId] = useState(null);
 
   const handleCopyText = (id, content) => {
+    let textToCopy = content || '';
+    const trimmed = textToCopy.trim();
+
+    // 若為 JSON 格式，直接提取 refinedText
+    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+      try {
+        const obj = JSON.parse(trimmed);
+        if (obj.refinedText) {
+          const parts = [];
+          if (obj.refinedText.casual) parts.push(obj.refinedText.casual);
+          if (obj.refinedText.formal) parts.push(obj.refinedText.formal);
+          if (parts.length > 0) {
+            navigator.clipboard.writeText(parts.join('\n\n'));
+            setCopiedId(id);
+            setTimeout(() => setCopiedId(null), 1800);
+            return;
+          }
+        }
+      } catch (e) {}
+    }
+
     // 優先嘗試提取 blockquote 內的純英文文字
-    const blockquoteMatches = content.match(/^>\s*(.+)$/gm);
-    let textToCopy = content;
+    const blockquoteMatches = textToCopy.match(/^>\s*(.+)$/gm);
     if (blockquoteMatches && blockquoteMatches.length > 0) {
       textToCopy = blockquoteMatches.map(line => line.replace(/^>\s*/, '').trim()).join('\n\n');
     }
@@ -52,11 +72,65 @@ export default function ChatArea({
   };
 
   const renderMarkdown = (content) => {
+    if (!content) return { __html: '' };
+    let textToRender = content;
+
+    // 若為尚未被後端轉換的純 JSON 結構，前端亦具備容錯轉換能力
+    const trimmed = content.trim();
+    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+      try {
+        const obj = JSON.parse(trimmed);
+        if (obj.refinedText || obj.grammarAnalysis || obj.rationale || obj.reply) {
+          if (obj.reply) {
+            textToRender = obj.reply;
+          } else {
+            let md = '### 🌟 修飾後英文全文 (Refined English Text)\n\n';
+            if (obj.refinedText?.casual) {
+              md += `🗣️ **自然道地口語版 (Natural & Conversational)**\n> ${obj.refinedText.casual.replace(/\n/g, '\n> ')}\n\n`;
+            }
+            if (obj.refinedText?.formal) {
+              md += `💼 **專業商務正式版 (Professional & Formal)**\n> ${obj.refinedText.formal.replace(/\n/g, '\n> ')}\n\n`;
+            }
+            md += '---\n\n';
+            if (Array.isArray(obj.grammarAnalysis) && obj.grammarAnalysis.length > 0) {
+              md += '### 🔍 語病與道地性解析 (Chinglish & Grammar Analysis)\n';
+              obj.grammarAnalysis.forEach(item => {
+                if (item.original || item.explanation) {
+                  md += `- **${item.original || ''}** ➔ ${item.explanation || ''}\n`;
+                }
+              });
+              md += '\n';
+            }
+            if (Array.isArray(obj.rationale) && obj.rationale.length > 0) {
+              md += '### 💡 修改原因與語境解析 (Rationale & Insights)\n';
+              obj.rationale.forEach(r => {
+                const txt = typeof r === 'string' ? r : (r.text || '');
+                if (txt) md += `- ${txt}\n`;
+              });
+              md += '\n';
+            }
+            if (Array.isArray(obj.idiomsAndUpgrades) && obj.idiomsAndUpgrades.length > 0) {
+              md += '### 📚 實用道地片語與延伸替換 (Idioms & Upgrades)\n';
+              obj.idiomsAndUpgrades.forEach(item => {
+                if (item.phrase) {
+                  md += `- **${item.phrase}**：${item.meaning || ''}\n`;
+                  if (item.example) md += `  - *例句*：${item.example}\n`;
+                }
+              });
+            }
+            textToRender = md;
+          }
+        }
+      } catch (e) {
+        // partial JSON or parse error, keep original text
+      }
+    }
+
     try {
-      const html = marked.parse(content || '');
+      const html = marked.parse(textToRender || '');
       return { __html: html };
     } catch {
-      return { __html: content };
+      return { __html: textToRender };
     }
   };
 
@@ -111,7 +185,7 @@ export default function ChatArea({
                 輸入需要修飾的英文文本
               </h2>
               <p className="mt-1.5 text-xs text-[var(--muted)] max-w-md mx-auto leading-relaxed">
-                單次上限 4,000 字元。首次送出後將由「英文修飾 Skill」深度解析不口語處與修改原因，後續可在同一對話持續深入追加討論。
+                單次上限 1,000 字元。首次送出後將由「英文修飾 Skill」深度解析不口語處與修改原因，後續可在同一對話持續深入追加討論。
               </p>
             </div>
 

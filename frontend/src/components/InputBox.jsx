@@ -32,17 +32,17 @@ export default function InputBox({
   };
 
   const charLength = input.length;
-  const isNearLimit = charLength >= 3800;
+  const isNearLimit = charLength >= 900;
 
   return (
     <div className="border-t border-[var(--border)] bg-[var(--card)] p-3 sm:p-4 shrink-0 select-none">
       <div className="max-w-4xl mx-auto">
         <div className="relative bg-[var(--background)] border border-[var(--border)] focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-500/20 rounded-2xl p-2.5 transition shadow-xs">
-          {/* Expandable Textarea with 4000 limit */}
+          {/* Expandable Textarea with 1000 limit */}
           <textarea
             ref={textareaRef}
             rows={1}
-            maxLength={4000}
+            maxLength={1000}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -78,7 +78,7 @@ export default function InputBox({
               </span>
               <span>•</span>
               <span className={`font-mono ${isNearLimit ? 'text-amber-500 font-bold' : ''}`}>
-                {charLength} / 4000 字元
+                {charLength} / 1000 字元
               </span>
             </div>
 
