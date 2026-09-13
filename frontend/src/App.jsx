@@ -9,7 +9,9 @@ import {
   fetchConversations,
   fetchConversationDetails,
   createPolishConversation,
+  createPolishConversationStream,
   sendFollowUpMessage,
+  sendFollowUpMessageStream,
   updateConversationTitle,
   deleteConversation
 } from './api';
@@ -132,7 +134,7 @@ export default function App() {
     }
   };
 
-  // Send message
+  // Send message with End-to-End Streaming
   const handleSend = async (overrideText) => {
     const text = (overrideText || input).trim();
     if (!text || isLoading) return;
@@ -153,14 +155,49 @@ export default function App() {
         roundNumber: 1,
         createdAt: new Date().toISOString()
       };
-      setMessages([tempUserMsg]);
+      const tempAiMsg = {
+        id: 'temp-ai-streaming',
+        senderType: 'AI',
+        content: '',
+        roundNumber: 1,
+        createdAt: new Date().toISOString()
+      };
+      setMessages([tempUserMsg, tempAiMsg]);
       setInput('');
 
       try {
-        const res = await createPolishConversation(text, apiKey, controller.signal);
-        setCurrentConversationId(res.conversation.id);
-        setMessages(res.messages);
-        setConversations((prev) => [res.conversation, ...prev]);
+        const streamResult = await createPolishConversationStream({
+          rawText: text,
+          customApiKey: apiKey,
+          onMetadata: (metadata) => {
+            setCurrentConversationId(metadata.conversationId);
+            const newConv = {
+              id: metadata.conversationId,
+              title: metadata.title,
+              mode: metadata.mode || 'POLISH',
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            };
+            setConversations((prev) => [newConv, ...prev.filter((c) => c.id !== metadata.conversationId)]);
+          },
+          onDelta: (chunk, accumulatedText) => {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === 'temp-ai-streaming' ? { ...m, content: accumulatedText } : m
+              )
+            );
+          },
+          signal: controller.signal
+        });
+
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === 'temp-ai-streaming'
+              ? { ...m, id: streamResult.aiMessageId || ('ai-' + Date.now()), content: streamResult.fullText }
+              : m
+          )
+        );
+
         setDrafts((prev) => {
           const next = { ...prev };
           delete next['new_chat'];
@@ -168,7 +205,6 @@ export default function App() {
         });
       } catch (err) {
         if (err.name === 'AbortError') {
-          // Handled in handleStopThinking
           return;
         }
         setErrorInfo({ message: err.message, text });
@@ -179,20 +215,48 @@ export default function App() {
     } else {
       // Follow-up
       const nextRound = Math.floor(messages.length / 2) + 1;
+      const userMsgId = 'temp-user-' + Date.now();
+      const aiStreamingId = 'temp-ai-streaming-' + Date.now();
       const tempUserMsg = {
-        id: 'temp-user-' + Date.now(),
+        id: userMsgId,
         senderType: 'USER',
         content: text,
         roundNumber: nextRound,
         createdAt: new Date().toISOString()
       };
+      const tempAiMsg = {
+        id: aiStreamingId,
+        senderType: 'AI',
+        content: '',
+        roundNumber: nextRound,
+        createdAt: new Date().toISOString()
+      };
 
-      setMessages((prev) => [...prev, tempUserMsg]);
+      setMessages((prev) => [...prev, tempUserMsg, tempAiMsg]);
       setInput('');
 
       try {
-        const aiMsg = await sendFollowUpMessage(currentConversationId, text, apiKey, controller.signal);
-        setMessages((prev) => [...prev, aiMsg]);
+        const streamResult = await sendFollowUpMessageStream({
+          conversationId: currentConversationId,
+          message: text,
+          customApiKey: apiKey,
+          onDelta: (chunk, accumulatedText) => {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === aiStreamingId ? { ...m, content: accumulatedText } : m
+              )
+            );
+          },
+          signal: controller.signal
+        });
+
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === aiStreamingId
+              ? { ...m, id: streamResult.aiMessageId || ('ai-' + Date.now()), content: streamResult.fullText }
+              : m
+          )
+        );
         setConversations((prev) =>
           prev.map((c) =>
             c.id === currentConversationId ? { ...c, updatedAt: new Date().toISOString() } : c
@@ -218,8 +282,8 @@ export default function App() {
     setIsLoading(false);
     // Restore text back to input
     setInput(lastPendingTextRef.current || '');
-    // Remove last unreplied user message from view
-    setMessages((prev) => prev.filter((m) => !String(m.id).startsWith('temp-user')));
+    // Remove temporary unreplied or streaming messages from view
+    setMessages((prev) => prev.filter((m) => !String(m.id).startsWith('temp-')));
   };
 
   const handleRetry = () => {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { marked } from 'marked';
-import { Sparkles, User, Bot, CheckCircle2, AlertCircle, Edit2, RotateCw, Square } from 'lucide-react';
+import { Sparkles, User, Bot, CheckCircle2, AlertCircle, Edit2, RotateCw, Square, Copy, Check } from 'lucide-react';
 
 export default function ChatArea({
   currentConversation,
@@ -15,6 +15,19 @@ export default function ChatArea({
   const scrollEndRef = useRef(null);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState('');
+  const [copiedId, setCopiedId] = useState(null);
+
+  const handleCopyText = (id, content) => {
+    // 優先嘗試提取 blockquote 內的純英文文字
+    const blockquoteMatches = content.match(/^>\s*(.+)$/gm);
+    let textToCopy = content;
+    if (blockquoteMatches && blockquoteMatches.length > 0) {
+      textToCopy = blockquoteMatches.map(line => line.replace(/^>\s*/, '').trim()).join('\n\n');
+    }
+    navigator.clipboard.writeText(textToCopy);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 1800);
+  };
 
   useEffect(() => {
     scrollEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -163,67 +176,80 @@ export default function ChatArea({
                 </div>
               );
             } else {
+              const isStreaming = String(msg.id).startsWith('temp-ai-');
               return (
                 <div key={msg.id || index} className="flex flex-col gap-2">
-                  <div className="flex items-center gap-2 text-xs text-[var(--muted)] font-medium">
-                    <span className="flex items-center gap-1 text-indigo-600 dark:text-indigo-400 font-semibold">
-                      <Bot className="w-3.5 h-3.5" />
-                      <span>AI 英文修飾助手</span>
-                    </span>
-                    <span>•</span>
-                    <span className={`px-2 py-0.5 rounded text-[11px] font-semibold border ${
-                      isRound1
-                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
-                        : 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20'
-                    }`}>
-                      {isRound1 ? '✨ 英文修飾解析 (搭配專屬 Skill)' : '💬 上下文追加答覆'}
-                    </span>
+                  <div className="flex items-center justify-between text-xs text-[var(--muted)] font-medium">
+                    <div className="flex items-center gap-2">
+                      <span className="flex items-center gap-1 text-indigo-600 dark:text-indigo-400 font-semibold">
+                        <Bot className="w-3.5 h-3.5" />
+                        <span>AI 英文修飾助手</span>
+                      </span>
+                      <span>•</span>
+                      <span className={`px-2 py-0.5 rounded text-[11px] font-semibold border ${
+                        isRound1
+                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                          : 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20'
+                      }`}>
+                        {isRound1 ? '✨ 英文修飾解析 (搭配專屬 Skill)' : '💬 上下文追加答覆'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {!isStreaming && msg.content && (
+                        <button
+                          onClick={() => handleCopyText(msg.id || index, msg.content)}
+                          className="flex items-center gap-1 text-[11px] text-[var(--muted)] hover:text-indigo-600 dark:hover:text-indigo-400 font-medium cursor-pointer transition py-0.5 px-2 rounded-lg hover:bg-[var(--background)] border border-transparent hover:border-[var(--border)]"
+                          title="點擊複製修飾後英文全文"
+                        >
+                          {copiedId === (msg.id || index) ? (
+                            <>
+                              <Check className="w-3 h-3 text-emerald-500" />
+                              <span className="text-emerald-500 font-semibold">已複製英文</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3 h-3" />
+                              <span>複製修飾英文</span>
+                            </>
+                          )}
+                        </button>
+                      )}
+
+                      {isStreaming && (
+                        <button
+                          onClick={onStopThinking}
+                          className="flex items-center gap-1 text-[11px] text-amber-500 hover:text-amber-600 font-medium cursor-pointer"
+                        >
+                          <Square className="w-3 h-3 fill-current" />
+                          <span>停止生成</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <div className="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-5 sm:p-6 shadow-xs prose prose-sm dark:prose-invert max-w-none prose-headings:font-semibold prose-a:text-indigo-600 prose-pre:bg-[var(--background)] prose-pre:border prose-pre:border-[var(--border)]">
-                    <div
-                      className="leading-relaxed text-sm space-y-3"
-                      dangerouslySetInnerHTML={renderMarkdown(msg.content)}
-                    />
+                  <div className="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-5 sm:p-6 shadow-xs prose prose-sm dark:prose-invert max-w-none select-text prose-headings:font-semibold prose-a:text-indigo-600 prose-pre:bg-[var(--background)] prose-pre:border prose-pre:border-[var(--border)] [&_blockquote]:border-l-4 [&_blockquote]:border-indigo-500 [&_blockquote]:bg-indigo-500/10 [&_blockquote]:dark:bg-indigo-500/15 [&_blockquote]:py-3 [&_blockquote]:px-4.5 [&_blockquote]:rounded-r-2xl [&_blockquote]:my-3 [&_blockquote]:not-italic [&_blockquote]:text-[var(--foreground)] [&_blockquote]:font-medium [&_blockquote]:select-text [&_blockquote]:cursor-text [&_blockquote]:shadow-2xs [&_blockquote]:tracking-wide [&_hr]:my-5 [&_hr]:border-[var(--border)]">
+                    {isStreaming && !msg.content ? (
+                      <div className="flex items-center gap-2 text-xs text-[var(--muted)] py-2">
+                        <div className="flex space-x-1">
+                          <div className="w-2 h-2 rounded-full bg-indigo-600 animate-bounce"></div>
+                          <div className="w-2 h-2 rounded-full bg-indigo-600 animate-bounce [animation-delay:0.2s]"></div>
+                          <div className="w-2 h-2 rounded-full bg-indigo-600 animate-bounce [animation-delay:0.4s]"></div>
+                        </div>
+                        <span>AI 正在思考並重構英文...</span>
+                      </div>
+                    ) : (
+                      <div className="leading-relaxed text-sm space-y-3 select-text">
+                        <div dangerouslySetInnerHTML={renderMarkdown(msg.content)} />
+                        {isStreaming && (
+                          <span className="inline-block w-2 h-4 ml-1 bg-indigo-500 animate-pulse align-middle" />
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
             }
           })
-        )}
-
-        {/* Thinking Indicator with Stop Button */}
-        {isLoading && (
-          <div className="flex flex-col gap-2 animate-in fade-in">
-            <div className="flex items-center justify-between text-xs text-[var(--muted)] font-medium">
-              <div className="flex items-center gap-2">
-                <span className="inline-block w-3.5 h-3.5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></span>
-                <span>AI 正在深入拆解語意並重構道地英文中...</span>
-              </div>
-              <button
-                onClick={onStopThinking}
-                className="text-amber-500 hover:text-amber-600 font-medium cursor-pointer"
-              >
-                ⏹️ 點此中斷
-              </button>
-            </div>
-            <div className="bg-[var(--card)] border border-indigo-500/30 rounded-2xl p-4 shadow-xs flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="flex space-x-1">
-                  <div className="w-2 h-2 rounded-full bg-indigo-600 animate-bounce"></div>
-                  <div className="w-2 h-2 rounded-full bg-indigo-600 animate-bounce [animation-delay:0.2s]"></div>
-                  <div className="w-2 h-2 rounded-full bg-indigo-600 animate-bounce [animation-delay:0.4s]"></div>
-                </div>
-                <span className="text-xs text-[var(--muted)]">調用 Gemini API (Mock / 60 秒上限超時機制)...</span>
-              </div>
-              <button
-                onClick={onStopThinking}
-                className="flex items-center gap-1 px-3 py-1 text-xs rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 font-medium cursor-pointer transition"
-              >
-                <Square className="w-3 h-3 fill-current" />
-                <span>強制停止思考</span>
-              </button>
-            </div>
-          </div>
         )}
 
         {/* Error Card with Retry Button (Option 3) */}
