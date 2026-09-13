@@ -49,6 +49,9 @@ public class GeminiService {
     @Value("${gemini.max-output-tokens:1000}")
     private int maxOutputTokens;
 
+    @Value("${gemini.presence-penalty:0.2}")
+    private double presencePenalty;
+
     public GeminiService(ObjectMapper objectMapper) {
         this.restClient = RestClient.builder().build();
         this.objectMapper = objectMapper;
@@ -111,11 +114,12 @@ public class GeminiService {
         }
         requestBody.put("contents", contents);
 
-        // 3. Generation Config (嚴格限制 JSON 回覆、1000 Tokens、temperature 0.55、topP 0.95)
+        // 3. Generation Config (嚴格限制 JSON 回覆、1000 Tokens、temperature 0.55、topP 0.95、presencePenalty 0.2)
         Map<String, Object> genConfig = new HashMap<>();
         genConfig.put("temperature", temperature);
         genConfig.put("topP", topP);
         genConfig.put("maxOutputTokens", maxOutputTokens);
+        genConfig.put("presencePenalty", presencePenalty);
         genConfig.put("responseMimeType", "application/json");
         requestBody.put("generationConfig", genConfig);
 
@@ -217,6 +221,7 @@ public class GeminiService {
                 genConfig.put("temperature", temperature);
                 genConfig.put("topP", topP);
                 genConfig.put("maxOutputTokens", maxOutputTokens);
+                genConfig.put("presencePenalty", presencePenalty);
                 genConfig.put("responseMimeType", "application/json");
                 requestBody.put("generationConfig", genConfig);
 
