@@ -28,6 +28,24 @@ export async function fetchConversationDetails(id) {
   return await res.json();
 }
 
+async function extractErrorMessage(res, defaultMsg = '請求失敗') {
+  try {
+    const errorData = await res.json();
+    if (errorData) {
+      if (errorData.message) return errorData.message;
+      if (errorData.rawError) return errorData.rawError;
+      if (errorData.error) return errorData.error;
+      return JSON.stringify(errorData);
+    }
+  } catch (e) {
+    try {
+      const text = await res.text();
+      if (text && text.trim()) return text;
+    } catch {}
+  }
+  return `${defaultMsg} (HTTP ${res.status}: ${res.statusText})`;
+}
+
 export async function createPolishConversation(rawText, customApiKey, signal) {
   const res = await fetch(`${API_BASE}/conversations/polish`, {
     method: 'POST',
@@ -39,8 +57,8 @@ export async function createPolishConversation(rawText, customApiKey, signal) {
     signal
   });
   if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.message || '修飾失敗，請檢查輸入內容或後端日誌');
+    const errorMsg = await extractErrorMessage(res, '修飾失敗');
+    throw new Error(errorMsg);
   }
   return await res.json();
 }
@@ -83,7 +101,8 @@ async function parseSseStream(response, { onMetadata, onDelta, onDone, onError }
             } else if (currentEvent === 'done' && onDone) {
               onDone(data);
             } else if (currentEvent === 'error') {
-              if (onError) onError(new Error(data.error || '串流傳輸錯誤'));
+              const errMsg = data.error || data.message || (typeof data === 'string' ? data : JSON.stringify(data));
+              if (onError) onError(new Error(errMsg || '串流傳輸錯誤'));
               return;
             }
           } catch (e) {
@@ -112,8 +131,8 @@ export async function createPolishConversationStream({ rawText, customApiKey, on
   });
 
   if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.message || errorData.error || '修飾失敗，請檢查輸入內容或後端日誌');
+    const errorMsg = await extractErrorMessage(res, '修飾請求失敗');
+    throw new Error(errorMsg);
   }
 
   return new Promise((resolve, reject) => {
@@ -156,8 +175,8 @@ export async function sendFollowUpMessage(conversationId, message, customApiKey,
     signal
   });
   if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.message || '發送追加訊息失敗');
+    const errorMsg = await extractErrorMessage(res, '發送追加訊息失敗');
+    throw new Error(errorMsg);
   }
   return await res.json();
 }
@@ -177,8 +196,8 @@ export async function sendFollowUpMessageStream({ conversationId, message, custo
   });
 
   if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.message || errorData.error || '發送追加訊息失敗');
+    const errorMsg = await extractErrorMessage(res, '發送追加訊息失敗');
+    throw new Error(errorMsg);
   }
 
   return new Promise((resolve, reject) => {
