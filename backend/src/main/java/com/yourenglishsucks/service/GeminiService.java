@@ -10,10 +10,18 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
+import java.util.stream.Stream;
 
 @Service
 public class GeminiService {
@@ -26,7 +34,7 @@ public class GeminiService {
     @Value("${gemini.api-key:}")
     private String configuredApiKey;
 
-    @Value("${gemini.model:gemini-1.5-flash}")
+    @Value("${gemini.model:gemini-3.5-flash-lite}")
     private String modelName;
 
     @Value("${gemini.mock:true}")
@@ -103,25 +111,32 @@ public class GeminiService {
         try {
             String responseJson = restClient.post()
                     .uri(url)
+                    .header("x-goog-api-key", effectiveKey)
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(requestBody)
                     .retrieve()
                     .body(String.class);
 
             JsonNode root = objectMapper.readTree(responseJson);
-            JsonNode textNode = root.path("candidates")
+            JsonNode partsNode = root.path("candidates")
                     .path(0)
                     .path("content")
-                    .path("parts")
-                    .path(0)
-                    .path("text");
+                    .path("parts");
 
-            if (!textNode.isMissingNode()) {
-                return textNode.asText();
-            } else {
-                log.warn("Gemini API 返回結果解析異常: {}", responseJson);
-                return "抱歉，無法從 AI 模型回傳中解析出有效文本內容。";
+            if (partsNode.isArray() && !partsNode.isEmpty()) {
+                StringBuilder sb = new StringBuilder();
+                for (JsonNode part : partsNode) {
+                    JsonNode textNode = part.path("text");
+                    if (!textNode.isMissingNode()) {
+                        sb.append(textNode.asText());
+                    }
+                }
+                if (!sb.isEmpty()) {
+                    return sb.toString();
+                }
             }
+            log.warn("Gemini API 返回結果解析異常: {}", responseJson);
+            return "抱歉，無法從 AI 模型回傳中解析出有效文本內容。";
         } catch (RestClientResponseException e) {
             log.error("呼叫 Gemini API 失敗: HTTP {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
             return "【Gemini API 呼叫失敗 (" + e.getStatusCode() + ")】\n" +
@@ -131,6 +146,136 @@ public class GeminiService {
             log.error("呼叫 Gemini API 發生未預期錯誤", e);
             return "連線至 Gemini API 時發生異常：" + e.getMessage();
         }
+    }
+
+    /**
+     * 端到端真流式輸出 (SSE Stream)
+     */
+    public void streamContent(
+            String systemInstruction,
+            List<Map<String, String>> conversationHistory,
+            String apiKey,
+            Consumer<String> onChunkReceived,
+            Runnable onComplete,
+            Consumer<Throwable> onError) {
+
+        String effectiveKey = resolveApiKey(apiKey);
+
+        // 若啟用 mock 模式或未配置 key，非同步推播模擬打字機流
+        if (mockMode || effectiveKey == null || effectiveKey.isBlank()) {
+            log.info("【Mock AI Streaming Mode 啟用】非同步模擬輸出打字機效果。");
+            CompletableFuture.runAsync(() -> {
+                try {
+                    String mockReply = generateMockResponse(systemInstruction, conversationHistory);
+                    int chunkSize = 6;
+                    for (int i = 0; i < mockReply.length(); i += chunkSize) {
+                        int end = Math.min(i + chunkSize, mockReply.length());
+                        onChunkReceived.accept(mockReply.substring(i, end));
+                        Thread.sleep(30);
+                    }
+                    onComplete.run();
+                } catch (Exception e) {
+                    onError.accept(e);
+                }
+            });
+            return;
+        }
+
+        CompletableFuture.runAsync(() -> {
+            try {
+                String streamUrl = "https://generativelanguage.googleapis.com/v1beta/models/" + modelName + ":streamGenerateContent?alt=sse&key=" + effectiveKey;
+
+                Map<String, Object> requestBody = new HashMap<>();
+                if (systemInstruction != null && !systemInstruction.isBlank()) {
+                    requestBody.put("system_instruction", Map.of(
+                            "parts", List.of(Map.of("text", systemInstruction))
+                    ));
+                }
+
+                List<Map<String, Object>> contents = new ArrayList<>();
+                for (Map<String, String> item : conversationHistory) {
+                    String role = "user".equalsIgnoreCase(item.get("role")) ? "user" : "model";
+                    String text = item.getOrDefault("text", "");
+                    contents.add(Map.of(
+                            "role", role,
+                            "parts", List.of(Map.of("text", text))
+                    ));
+                }
+                requestBody.put("contents", contents);
+                requestBody.put("generationConfig", Map.of(
+                        "temperature", 0.7,
+                        "maxOutputTokens", 4096
+                ));
+
+                String jsonBody = objectMapper.writeValueAsString(requestBody);
+
+                HttpClient client = HttpClient.newBuilder()
+                        .connectTimeout(Duration.ofSeconds(15))
+                        .build();
+
+                HttpRequest req = HttpRequest.newBuilder()
+                        .uri(URI.create(streamUrl))
+                        .timeout(Duration.ofSeconds(120))
+                        .header("Content-Type", "application/json")
+                        .header("x-goog-api-key", effectiveKey)
+                        .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
+                        .build();
+
+                HttpResponse<Stream<String>> resp = client.send(req, HttpResponse.BodyHandlers.ofLines());
+
+                if (resp.statusCode() == 429) {
+                    if (!"gemini-3.5-flash-lite".equalsIgnoreCase(modelName)) {
+                        log.warn("模型 {} 觸發 429 額度上限，自動切換至高額度備援模型 gemini-3.5-flash-lite 重試...", modelName);
+                        String fallbackUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:streamGenerateContent?alt=sse&key=" + effectiveKey;
+                        HttpRequest fallbackReq = HttpRequest.newBuilder()
+                                .uri(URI.create(fallbackUrl))
+                                .timeout(Duration.ofSeconds(120))
+                                .header("Content-Type", "application/json")
+                                .header("x-goog-api-key", effectiveKey)
+                                .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
+                                .build();
+                        resp = client.send(fallbackReq, HttpResponse.BodyHandlers.ofLines());
+                    }
+                }
+
+                if (resp.statusCode() >= 400) {
+                    StringBuilder errSb = new StringBuilder();
+                    resp.body().forEach(errSb::append);
+                    String rawErr = errSb.toString();
+                    if (resp.statusCode() == 429) {
+                        throw new RuntimeException("【API 呼叫頻率已達 Google 免費額度上限 (429 Too Many Requests)】\n請稍候約 30~60 秒後點擊「點擊重試 🔄」，或至 Google AI Studio 綁定計費帳戶以提升額度。");
+                    }
+                    throw new RuntimeException("Gemini API Error (" + resp.statusCode() + "): " + rawErr);
+                }
+
+                resp.body().forEach(line -> {
+                    if (line != null && line.startsWith("data: ")) {
+                        String payload = line.substring(6).trim();
+                        if (!payload.isBlank() && !"[DONE]".equals(payload)) {
+                            try {
+                                JsonNode root = objectMapper.readTree(payload);
+                                JsonNode parts = root.path("candidates").path(0).path("content").path("parts");
+                                if (parts.isArray()) {
+                                    for (JsonNode part : parts) {
+                                        JsonNode text = part.path("text");
+                                        if (!text.isMissingNode() && !text.asText().isEmpty()) {
+                                            onChunkReceived.accept(text.asText());
+                                        }
+                                    }
+                                }
+                            } catch (Exception parseEx) {
+                                log.warn("解析 Gemini Stream chunk 異常: {}", payload, parseEx);
+                            }
+                        }
+                    }
+                });
+
+                onComplete.run();
+            } catch (Exception ex) {
+                log.error("Gemini 串流過程發生異常", ex);
+                onError.accept(ex);
+            }
+        });
     }
 
     private String generateMockResponse(String systemInstruction, List<Map<String, String>> conversationHistory) {
@@ -146,23 +291,23 @@ public class GeminiService {
             return """
                 > 💡 *【提示】尚未配置 GEMINI_API_KEY，以下為系統模擬的英文修飾效果。您可以在介面右上角設定 API Key 或寫入後端 application.yml。*
 
-                ### 🌟 建議修飾版本 (Refined Versions)
-                - **自然地道版 (Natural & Conversational)**:
+                ### 🌟 修飾後英文全文 (Refined English Text)
+                - **🗣️ 自然道地口語版 (Natural & Conversational)**:
                   "I'm writing to let you know about our current project status. We ran into a small issue with the database setup, so the release might be delayed by a week or two. Thanks for your patience!"
-                - **專業商務版 (Professional & Formal)**:
+                - **💼 專業商務正式版 (Professional & Formal)**:
                   "I am writing to provide an update on our project schedule. Due to unforeseen database connectivity challenges, our anticipated launch date has been postponed by approximately two weeks. We appreciate your understanding and flexibility."
 
-                ### 💡 關鍵修飾解析 (Key Improvements)
-                1. **動詞目的搭配**: 原文如使用 `for inform you`，標準英語文法應使用不定詞 `to inform you` 或更自然的 `to update you`。
-                2. **因果關係精簡**: 避免中式英文常見的 `Because... so...` 同時出現，建議改用 `Due to [名詞片語]`。
-                3. **語氣得體性**: 將生硬的 `Please kindly understand` 優化為商業上更具同理心的 `We appreciate your understanding`。
+                ### 🔍 語病與道地性解析 (Chinglish & Grammar Analysis)
+                - **for update** ➔ 不定詞應使用 `to update` 或 `to give you an update`，`for` 後面通常接名詞或動名詞。
+                - **because we have error** ➔ 搭配動詞應使用 `encountered an error` 或 `ran into an issue` 更為道地。
 
-                ### 📚 實用升級片語與詞彙 (Vocabulary & Phrase Upgrades)
-                - **hit a snag / run into a challenge**: 表示遇到突發小阻礙，比起單純的 problem 更生動。
-                - **unforeseen challenges**: 不可預期的挑戰，適合商務正式彙報。
+                ### 💡 修改原因與語境解析 (Rationale & Insights)
+                - **語氣得體性**: 商務語境中使用 `unforeseen challenges` 比單純直白抱怨 `we have error` 顯得更加專業且負責。
+                - **口語生活感**: 口語溝通中以 `ran into a small issue` 表達碰上小問題，親切自然。
 
-                ### 🎯 總結小叮嚀
-                結構已經非常完整！只要注意連詞與語氣搭配，即可讓整篇文字大幅躍升母語者水準。
+                ### 📚 實用道地片語與延伸替換 (Idioms & Upgrades)
+                - **hit a snag / run into a bump**：遇到突發小阻礙。
+                  - *例句*：We hit a small snag during deployment, but we've already fixed it. (我們部署時遇到一點小阻礙，但已經修復了。)
                 """;
         } else {
             // 追加提問的模擬回覆

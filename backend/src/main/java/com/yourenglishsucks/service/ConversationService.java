@@ -12,13 +12,17 @@ import com.yourenglishsucks.entity.PolishRawSubmission;
 import com.yourenglishsucks.repository.ChatMessageRepository;
 import com.yourenglishsucks.repository.ConversationRepository;
 import com.yourenglishsucks.repository.PolishRawSubmissionRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -26,6 +30,8 @@ import java.util.UUID;
 
 @Service
 public class ConversationService {
+
+    private static final Logger log = LoggerFactory.getLogger(ConversationService.class);
 
     private final ConversationRepository conversationRepository;
     private final ChatMessageRepository chatMessageRepository;
@@ -44,6 +50,186 @@ public class ConversationService {
         this.polishRawSubmissionRepository = polishRawSubmissionRepository;
         this.geminiService = geminiService;
         this.skillService = skillService;
+    }
+
+    /**
+     * 首次送出英文修飾文本 (端到端真流式輸出 SSE)
+     */
+    public void startPolishStream(PolishRequest request, SseEmitter emitter) {
+        String rawText = request.rawText().trim();
+        if (rawText.isBlank()) {
+            try {
+                emitter.send(SseEmitter.event().name("error").data(Map.of("error", "輸入的英文文本不能為空")));
+                emitter.complete();
+            } catch (IOException ignored) {}
+            return;
+        }
+
+        String title = generateTitle(rawText);
+
+        // 1. 建立 Conversation
+        Conversation conversation = new Conversation(title, "POLISH");
+        conversation = conversationRepository.save(conversation);
+
+        // 2. 存入獨立分析表
+        PolishRawSubmission submission = new PolishRawSubmission(conversation.getId(), rawText);
+        polishRawSubmissionRepository.save(submission);
+
+        // 3. 儲存使用者第 1 輪訊息
+        ChatMessage userMessage = new ChatMessage(conversation.getId(), "USER", rawText, 1);
+        userMessage = chatMessageRepository.save(userMessage);
+
+        UUID conversationId = conversation.getId();
+        UUID userMessageId = userMessage.getId();
+
+        // 發送 metadata 事件
+        try {
+            emitter.send(SseEmitter.event().name("metadata").data(Map.of(
+                    "conversationId", conversationId.toString(),
+                    "title", title,
+                    "mode", "POLISH",
+                    "userMessageId", userMessageId.toString(),
+                    "roundNumber", 1
+            )));
+        } catch (IOException e) {
+            emitter.completeWithError(e);
+            return;
+        }
+
+        // 4. 準備 Prompt
+        String systemPrompt = skillService.getEnglishPolishSystemPrompt();
+        String userPrompt = skillService.buildFirstRoundPolishPrompt(rawText);
+        List<Map<String, String>> history = List.of(
+                Map.of("role", "user", "text", userPrompt)
+        );
+
+        StringBuilder fullReply = new StringBuilder();
+
+        geminiService.streamContent(
+                systemPrompt,
+                history,
+                request.apiKey(),
+                chunk -> {
+                    try {
+                        fullReply.append(chunk);
+                        emitter.send(SseEmitter.event().name("delta").data(Map.of("text", chunk)));
+                    } catch (IOException ex) {
+                        log.warn("向客戶端傳送 delta chunk 失敗: {}", ex.getMessage());
+                    }
+                },
+                () -> {
+                    try {
+                        // 儲存完整 AI 訊息
+                        ChatMessage aiMessage = new ChatMessage(conversationId, "AI", fullReply.toString(), 1);
+                        chatMessageRepository.save(aiMessage);
+
+                        emitter.send(SseEmitter.event().name("done").data(Map.of(
+                                "status", "completed",
+                                "aiMessageId", aiMessage.getId().toString(),
+                                "fullText", fullReply.toString()
+                        )));
+                        emitter.complete();
+                    } catch (Exception ex) {
+                        emitter.completeWithError(ex);
+                    }
+                },
+                error -> {
+                    try {
+                        emitter.send(SseEmitter.event().name("error").data(Map.of("error", error.getMessage())));
+                        emitter.completeWithError(error);
+                    } catch (IOException ignored) {}
+                }
+        );
+    }
+
+    /**
+     * 在同一對話中追加發問 (端到端真流式輸出 SSE)
+     */
+    public void addFollowUpStream(UUID conversationId, FollowUpRequest request, SseEmitter emitter) {
+        Conversation conversation = conversationRepository.findById(conversationId)
+                .filter(c -> !c.isArchived())
+                .orElse(null);
+
+        if (conversation == null) {
+            try {
+                emitter.send(SseEmitter.event().name("error").data(Map.of("error", "對話不存在或已被刪除")));
+                emitter.complete();
+            } catch (IOException ignored) {}
+            return;
+        }
+
+        String userQuery = request.message().trim();
+        if (userQuery.isBlank()) {
+            try {
+                emitter.send(SseEmitter.event().name("error").data(Map.of("error", "追加訊息不能為空")));
+                emitter.complete();
+            } catch (IOException ignored) {}
+            return;
+        }
+
+        long count = chatMessageRepository.countByConversationId(conversationId);
+        int currentRound = (int) (count / 2) + 1;
+
+        ChatMessage userMsg = new ChatMessage(conversationId, "USER", userQuery, currentRound);
+        userMsg = chatMessageRepository.save(userMsg);
+
+        try {
+            emitter.send(SseEmitter.event().name("metadata").data(Map.of(
+                    "conversationId", conversationId.toString(),
+                    "userMessageId", userMsg.getId().toString(),
+                    "roundNumber", currentRound
+            )));
+        } catch (IOException e) {
+            emitter.completeWithError(e);
+            return;
+        }
+
+        List<ChatMessage> allMessages = chatMessageRepository.findByConversationIdOrderByCreatedAtAsc(conversationId);
+        List<Map<String, String>> history = new ArrayList<>();
+        for (ChatMessage msg : allMessages) {
+            String role = "USER".equalsIgnoreCase(msg.getSenderType()) ? "user" : "model";
+            history.add(Map.of("role", role, "text", msg.getContent()));
+        }
+
+        StringBuilder fullReply = new StringBuilder();
+
+        geminiService.streamContent(
+                null,
+                history,
+                request.apiKey(),
+                chunk -> {
+                    try {
+                        fullReply.append(chunk);
+                        emitter.send(SseEmitter.event().name("delta").data(Map.of("text", chunk)));
+                    } catch (IOException ex) {
+                        log.warn("向客戶端傳送 delta chunk 失敗: {}", ex.getMessage());
+                    }
+                },
+                () -> {
+                    try {
+                        ChatMessage aiMsg = new ChatMessage(conversationId, "AI", fullReply.toString(), currentRound);
+                        chatMessageRepository.save(aiMsg);
+
+                        conversation.setUpdatedAt(aiMsg.getCreatedAt());
+                        conversationRepository.save(conversation);
+
+                        emitter.send(SseEmitter.event().name("done").data(Map.of(
+                                "status", "completed",
+                                "aiMessageId", aiMsg.getId().toString(),
+                                "fullText", fullReply.toString()
+                        )));
+                        emitter.complete();
+                    } catch (Exception ex) {
+                        emitter.completeWithError(ex);
+                    }
+                },
+                error -> {
+                    try {
+                        emitter.send(SseEmitter.event().name("error").data(Map.of("error", error.getMessage())));
+                        emitter.completeWithError(error);
+                    } catch (IOException ignored) {}
+                }
+        );
     }
 
     /**

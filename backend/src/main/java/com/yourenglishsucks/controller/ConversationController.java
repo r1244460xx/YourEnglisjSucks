@@ -43,6 +43,18 @@ public class ConversationController {
     }
 
     /**
+     * 第一次提交英文文本修飾 (端到端真流式輸出 SSE)
+     */
+    @PostMapping(value = "/polish/stream", produces = org.springframework.http.MediaType.TEXT_EVENT_STREAM_VALUE)
+    public org.springframework.web.servlet.mvc.method.annotation.SseEmitter startPolishStream(
+            @Valid @RequestBody PolishRequest request) {
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter emitter =
+                new org.springframework.web.servlet.mvc.method.annotation.SseEmitter(180_000L);
+        conversationService.startPolishStream(request, emitter);
+        return emitter;
+    }
+
+    /**
      * 在同一對話中追加發問 (Follow-up)
      */
     @PostMapping("/{id}/messages")
@@ -51,6 +63,19 @@ public class ConversationController {
             @Valid @RequestBody FollowUpRequest request) {
         ChatMessageResponse response = conversationService.addFollowUp(id, request);
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 在同一對話中追加發問 (端到端真流式輸出 SSE)
+     */
+    @PostMapping(value = "/{id}/messages/stream", produces = org.springframework.http.MediaType.TEXT_EVENT_STREAM_VALUE)
+    public org.springframework.web.servlet.mvc.method.annotation.SseEmitter addFollowUpStream(
+            @PathVariable("id") UUID id,
+            @Valid @RequestBody FollowUpRequest request) {
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter emitter =
+                new org.springframework.web.servlet.mvc.method.annotation.SseEmitter(180_000L);
+        conversationService.addFollowUpStream(id, request, emitter);
+        return emitter;
     }
 
     /**

@@ -21,8 +21,8 @@ spring:
 # Gemini API 配置 (未配置時自動採用 Mock AI 模式，專注於測試使用情境之輸入與輸出)
 gemini:
   api-key: ${GEMINI_API_KEY:}
-  model: ${GEMINI_MODEL:gemini-1.5-flash}
-  mock: true
+  model: ${GEMINI_MODEL:gemini-3.5-flash-lite}
+  mock: ${GEMINI_MOCK:false}
 
 ---
 spring:

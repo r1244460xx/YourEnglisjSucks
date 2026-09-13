@@ -182,4 +182,23 @@ class ConversationControllerTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    @DisplayName("Use Case 6: 驗證首次修飾文本端到端真流式輸出 (SSE Stream)")
+    void testStartPolishStreamFlow() throws Exception {
+        PolishRequest request = new PolishRequest("I am write this to test streaming output.", null);
+
+        MvcResult result = mockMvc.perform(post("/api/conversations/polish/stream")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        // 驗證回傳 Content-Type 為 text/event-stream
+        String contentType = result.getResponse().getContentType();
+        assertThat(contentType).contains(MediaType.TEXT_EVENT_STREAM_VALUE);
+
+        // 驗證獨立 table (polish_raw_submissions) 正確持久化
+        assertThat(polishRawSubmissionRepository.count()).isEqualTo(1);
+    }
 }
