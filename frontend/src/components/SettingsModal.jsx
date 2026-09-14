@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Key, Check, Info, ShieldAlert } from 'lucide-react';
 
 export default function SettingsModal({
@@ -12,6 +12,12 @@ export default function SettingsModal({
 }) {
   const [localKey, setLocalKey] = useState(apiKey || '');
   const [savedSuccess, setSavedSuccess] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setLocalKey(apiKey || '');
+    }
+  }, [isOpen, apiKey]);
 
   if (!isOpen) return null;
 
@@ -49,20 +55,24 @@ export default function SettingsModal({
           </button>
         </div>
 
-        {/* Backend Status Alert */}
+        {/* Backend & User API Status Alert */}
         <div className="p-3.5 rounded-xl bg-[var(--background)] border border-[var(--border)] text-xs space-y-1.5">
           <div className="font-semibold text-[var(--foreground)] flex items-center gap-1.5">
             <Info className="w-4 h-4 text-indigo-500" />
-            <span>後端連線狀態：</span>
+            <span>API 金鑰與連線狀態：</span>
           </div>
           <div className="text-[var(--muted)] pl-5">
             {hasBackendApiKey ? (
               <span className="text-emerald-600 dark:text-emerald-400 font-medium">
-                ✅ 後端環境已配置 GEMINI_API_KEY，已啟用真實 Gemini 大模型！
+                ✅ 後端環境已配置全域 GEMINI_API_KEY，已啟用真實 Gemini 大模型！
+              </span>
+            ) : apiKey ? (
+              <span className="text-emerald-600 dark:text-emerald-400 font-medium leading-relaxed block">
+                ✅ 已儲存您的個人自定義 API Key，真實 Gemini 大模型已連線就緒！
               </span>
             ) : (
               <span className="text-amber-600 dark:text-amber-400 font-medium leading-relaxed block">
-                ⚠️ 後端未偵測到全域 API Key。若未填入金鑰，系統將處於 <strong>Mock 本地模擬模式</strong>（回傳預設的靜態專案延期測試假資料，無法理解真實文本）。請在下方填寫您的 API Key 以啟用真實 AI！
+                ⚠️ 後端未配置全域 Key，且尚未填入個人 Key。若未填入金鑰，系統將處於 <strong>Mock 本地模擬模式</strong>（回傳預設的靜態專案延期測試假資料）。請在下方填寫您的 API Key 以啟用真實 AI！
               </span>
             )}
           </div>

@@ -402,6 +402,7 @@ export default function App() {
             isLoading={isLoading}
             errorInfo={errorInfo}
             apiKeyConfigured={hasBackendApiKey || !!apiKey}
+            modelName={modelName}
             onOpenSettings={() => setIsSettingsOpen(true)}
             onSampleClick={handleSampleClick}
             onRenameTitle={handleRenameConversation}

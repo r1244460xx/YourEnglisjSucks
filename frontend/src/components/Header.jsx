@@ -79,7 +79,7 @@ export default function Header({
         >
           <Key className="w-3 h-3" />
           <span className="font-medium">
-            {apiKeyConfigured ? (modelName || 'Gemini 2.5 Flash') : 'Mock 模式 (未設 Key)'}
+            {apiKeyConfigured ? (modelName || 'Gemini 3.6 Flash') : 'Mock 模式 (未設 Key)'}
           </span>
           <span className={`w-1.5 h-1.5 rounded-full ${apiKeyConfigured ? 'bg-emerald-500' : 'bg-amber-500 animate-ping'}`}></span>
         </div>

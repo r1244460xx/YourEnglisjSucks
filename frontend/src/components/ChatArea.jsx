@@ -9,6 +9,7 @@ export default function ChatArea({
   isLoading,
   errorInfo,
   apiKeyConfigured,
+  modelName,
   onOpenSettings,
   onSampleClick,
   onRenameTitle,
@@ -19,6 +20,16 @@ export default function ChatArea({
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState('');
   const [copiedId, setCopiedId] = useState(null);
+
+  const displayModelName = modelName
+    ? (modelName.toLowerCase().includes('3.6')
+        ? 'Gemini 3.6 Flash'
+        : (modelName.toLowerCase().includes('3.5')
+            ? 'Gemini 3.5 Flash Lite'
+            : (modelName.toLowerCase().includes('2.5')
+                ? 'Gemini 3.6 Flash'
+                : modelName)))
+    : 'Gemini 3.6 Flash';
 
   const effectiveDraft = originalDraftText || (messages && messages.find((m) => m.senderType === 'USER' && m.roundNumber === 1)?.content) || '';
 
@@ -209,7 +220,7 @@ export default function ChatArea({
                     <span>目前處於 Mock 本地模擬模式</span>
                   </div>
                   <p className="text-[11px] text-amber-700/90 dark:text-amber-300/90 leading-relaxed">
-                    尚未配置 Gemini API Key。送出後將回傳預設的專案延期測試假資料，無法理解真實文本。請設定 Key 以啟用真實 Gemini 2.5 Flash 智能修飾！
+                    尚未配置 Gemini API Key。送出後將回傳預設的專案延期測試假資料，無法理解真實文本。請設定 Key 以啟用真實 {displayModelName} 智能修飾！
                   </p>
                 </div>
                 <button
@@ -384,7 +395,7 @@ export default function ChatArea({
                         }`}>
                           {!apiKeyConfigured
                             ? (isRound1 ? '⚠️ 測試模擬假資料 (Mock AI)' : `⚠️ 模擬追加答覆 (Mock AI · Round ${msg.roundNumber})`)
-                            : (isRound1 ? '✨ 英文修飾解析 (Gemini 2.5 Flash)' : `💬 上下文追加答覆 (Round ${msg.roundNumber})`)}
+                            : (isRound1 ? `✨ 英文修飾解析 (${displayModelName})` : `💬 上下文追加答覆 (Round ${msg.roundNumber})`)}
                         </span>
                       </div>
 
