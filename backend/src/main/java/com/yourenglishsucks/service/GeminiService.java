@@ -17,6 +17,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -40,7 +41,7 @@ public class GeminiService {
     @Value("${gemini.mock:true}")
     private boolean mockMode;
 
-    @Value("${gemini.temperature:0.55}")
+    @Value("${gemini.temperature:0.5}")
     private double temperature;
 
     @Value("${gemini.top-p:0.95}")
@@ -197,6 +198,21 @@ public class GeminiService {
             Consumer<String> onChunkReceived,
             Runnable onComplete,
             Consumer<Throwable> onError) {
+        streamContent(systemInstruction, conversationHistory, apiKey, responseSchema, () -> false, onChunkReceived, onComplete, onError);
+    }
+
+    /**
+     * 端到端真流式輸出 (SSE Stream, 支援自定義 responseSchema 與客戶端中斷偵測)
+     */
+    public void streamContent(
+            String systemInstruction,
+            List<Map<String, String>> conversationHistory,
+            String apiKey,
+            Map<String, Object> responseSchema,
+            java.util.function.BooleanSupplier isCancelled,
+            Consumer<String> onChunkReceived,
+            Runnable onComplete,
+            Consumer<Throwable> onError) {
 
         String effectiveKey = resolveApiKey(apiKey);
 
@@ -208,11 +224,17 @@ public class GeminiService {
                     String mockReply = generateMockResponse(systemInstruction, conversationHistory);
                     int chunkSize = 6;
                     for (int i = 0; i < mockReply.length(); i += chunkSize) {
+                        if (isCancelled != null && isCancelled.getAsBoolean()) {
+                            log.info("客戶端已主動終止連線，即刻中斷 Mock AI 串流。");
+                            return;
+                        }
                         int end = Math.min(i + chunkSize, mockReply.length());
                         onChunkReceived.accept(mockReply.substring(i, end));
                         Thread.sleep(30);
                     }
-                    onComplete.run();
+                    if (isCancelled == null || !isCancelled.getAsBoolean()) {
+                        onComplete.run();
+                    }
                 } catch (Exception e) {
                     onError.accept(e);
                 }
@@ -294,29 +316,39 @@ public class GeminiService {
                     throw new RuntimeException("Gemini API Error (" + resp.statusCode() + "): " + rawErr);
                 }
 
-                resp.body().forEach(line -> {
-                    if (line != null && line.startsWith("data: ")) {
-                        String payload = line.substring(6).trim();
-                        if (!payload.isBlank() && !"[DONE]".equals(payload)) {
-                            try {
-                                JsonNode root = objectMapper.readTree(payload);
-                                JsonNode parts = root.path("candidates").path(0).path("content").path("parts");
-                                if (parts.isArray()) {
-                                    for (JsonNode part : parts) {
-                                        JsonNode text = part.path("text");
-                                        if (!text.isMissingNode() && !text.asText().isEmpty()) {
-                                            onChunkReceived.accept(text.asText());
+                try (Stream<String> lines = resp.body()) {
+                    Iterator<String> iterator = lines.iterator();
+                    while (iterator.hasNext()) {
+                        if (isCancelled != null && isCancelled.getAsBoolean()) {
+                            log.info("客戶端已主動中斷 SSE 串流，即刻停止讀取 Gemini 回覆。");
+                            return;
+                        }
+                        String line = iterator.next();
+                        if (line != null && line.startsWith("data: ")) {
+                            String payload = line.substring(6).trim();
+                            if (!payload.isBlank() && !"[DONE]".equals(payload)) {
+                                try {
+                                    JsonNode root = objectMapper.readTree(payload);
+                                    JsonNode parts = root.path("candidates").path(0).path("content").path("parts");
+                                    if (parts.isArray()) {
+                                        for (JsonNode part : parts) {
+                                            JsonNode text = part.path("text");
+                                            if (!text.isMissingNode() && !text.asText().isEmpty()) {
+                                                onChunkReceived.accept(text.asText());
+                                            }
                                         }
                                     }
+                                } catch (Exception parseEx) {
+                                    log.warn("解析 Gemini Stream chunk 異常: {}", payload, parseEx);
                                 }
-                            } catch (Exception parseEx) {
-                                log.warn("解析 Gemini Stream chunk 異常: {}", payload, parseEx);
                             }
                         }
                     }
-                });
+                }
 
-                onComplete.run();
+                if (isCancelled == null || !isCancelled.getAsBoolean()) {
+                    onComplete.run();
+                }
             } catch (Exception ex) {
                 log.error("Gemini 串流過程發生異常", ex);
                 onError.accept(ex);

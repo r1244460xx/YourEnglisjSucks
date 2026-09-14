@@ -29,6 +29,7 @@ export default function App() {
   // Option B: Drafts map per conversation / session
   const [drafts, setDrafts] = useState({});
   const lastPendingTextRef = useRef('');
+  const lastActiveMessagesRef = useRef(null);
   const abortControllerRef = useRef(null);
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -141,6 +142,7 @@ export default function App() {
   // 執行第 1 輪英文修飾 (Polish)
   const executeSendPolish = async (text) => {
     lastPendingTextRef.current = text;
+    lastActiveMessagesRef.current = [];
     setOriginalDraftText(text);
     setErrorInfo(null);
     setIsLoading(true);
@@ -202,6 +204,7 @@ export default function App() {
         signal: controller.signal
       });
 
+      lastActiveMessagesRef.current = null;
       setMessages((prev) =>
         prev.map((m) =>
           m.id === aiStreamingId
@@ -231,6 +234,7 @@ export default function App() {
   // 執行後續追加問答 (Follow-up)
   const executeSendFollowUp = async (text, convId, baseMessages) => {
     lastPendingTextRef.current = text;
+    lastActiveMessagesRef.current = baseMessages;
     setErrorInfo(null);
     setIsLoading(true);
 
@@ -282,6 +286,7 @@ export default function App() {
         signal: controller.signal
       });
 
+      lastActiveMessagesRef.current = null;
       setMessages((prev) =>
         prev.map((m) =>
           m.id === aiStreamingId
@@ -331,8 +336,13 @@ export default function App() {
     setIsLoading(false);
     // Restore text back to input
     setInput(lastPendingTextRef.current || '');
-    // 僅移除串流中的佔位 AI 訊息
-    setMessages((prev) => prev.filter((m) => !String(m.id).includes('streaming')));
+    // 乾淨回復至本次發問前的狀態 (避免留下未回覆的孤立 User 發問或佔位 AI 訊息)
+    if (lastActiveMessagesRef.current !== null) {
+      setMessages(lastActiveMessagesRef.current);
+      lastActiveMessagesRef.current = null;
+    } else {
+      setMessages((prev) => prev.filter((m) => !String(m.id).includes('streaming')));
+    }
   };
 
   const handleRetry = () => {

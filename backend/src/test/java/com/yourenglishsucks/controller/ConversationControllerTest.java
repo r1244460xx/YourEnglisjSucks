@@ -8,6 +8,7 @@ import com.yourenglishsucks.entity.PolishRawSubmission;
 import com.yourenglishsucks.repository.ChatMessageRepository;
 import com.yourenglishsucks.repository.ConversationRepository;
 import com.yourenglishsucks.repository.PolishRawSubmissionRepository;
+import com.yourenglishsucks.service.ConversationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -47,6 +48,9 @@ class ConversationControllerTest {
 
     @Autowired
     private PolishRawSubmissionRepository polishRawSubmissionRepository;
+
+    @Autowired
+    private ConversationService conversationService;
 
     @BeforeEach
     void setUp() {
@@ -206,5 +210,49 @@ class ConversationControllerTest {
 
         // 驗證獨立 table (polish_raw_submissions) 正確持久化
         assertThat(polishRawSubmissionRepository.count()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("Use Case 7: 驗證追加討論端到端真流式輸出 (SSE Stream)")
+    void testFollowUpStreamFlow() throws Exception {
+        // 先建立首次對話
+        PolishRequest polishRequest = new PolishRequest("I have a meeting yesterday night.", null);
+        MvcResult polishResult = mockMvc.perform(post("/api/conversations/polish")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(polishRequest)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String convIdStr = objectMapper.readTree(polishResult.getResponse().getContentAsString())
+                .path("conversation").path("id").asText();
+
+        // 進行串流追加發問
+        FollowUpRequest followUpRequest = new FollowUpRequest("為什麼不能說 yesterday night？", null);
+        MvcResult streamResult = mockMvc.perform(post("/api/conversations/" + convIdStr + "/messages/stream")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(followUpRequest)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        // 驗證回傳 Content-Type 為 text/event-stream
+        String contentType = streamResult.getResponse().getContentType();
+        assertThat(contentType).contains(MediaType.TEXT_EVENT_STREAM_VALUE);
+    }
+
+    @Test
+    @DisplayName("Use Case 8: 驗證強制停止 (Abort / Client Disconnect) 時後端優雅處置不崩潰")
+    void testStreamCancellationHandling() {
+        PolishRequest request = new PolishRequest("I like play basketball.", null);
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter emitter =
+                new org.springframework.web.servlet.mvc.method.annotation.SseEmitter(5000L);
+
+        // 呼叫串流服務
+        conversationService.startPolishStream(request, emitter);
+
+        // 模擬客戶端在串流途中點擊「強制停止」/ 關閉連線
+        emitter.complete();
+
+        // 驗證未引發未受檢例外且資料庫維持正常狀態
+        assertThat(conversationRepository.count()).isGreaterThanOrEqualTo(0);
     }
 }

@@ -106,20 +106,31 @@ public class ConversationService {
 
         StringBuilder fullReply = new StringBuilder();
 
+        java.util.concurrent.atomic.AtomicBoolean isCancelled = new java.util.concurrent.atomic.AtomicBoolean(false);
+        emitter.onCompletion(() -> isCancelled.set(true));
+        emitter.onTimeout(() -> isCancelled.set(true));
+        emitter.onError(e -> isCancelled.set(true));
+
         geminiService.streamContent(
                 systemPrompt,
                 history,
                 request.apiKey(),
                 responseSchema,
+                isCancelled::get,
                 chunk -> {
                     try {
                         fullReply.append(chunk);
                         emitter.send(SseEmitter.event().name("delta").data(Map.of("text", chunk)));
-                    } catch (IOException ex) {
-                        log.warn("向客戶端傳送 delta chunk 失敗: {}", ex.getMessage());
+                    } catch (Exception ex) {
+                        isCancelled.set(true);
+                        log.info("向客戶端傳送 delta chunk 終止 (客戶端已中斷或停止生成): {}", ex.getMessage());
                     }
                 },
                 () -> {
+                    if (isCancelled.get()) {
+                        log.info("首次修飾已被客戶端強制停止，略過訊息存檔。");
+                        return;
+                    }
                     try {
                         String rawJson = fullReply.toString();
                         String markdownReply = skillService.formatPolishJsonToMarkdown(rawJson, rawText);
@@ -144,6 +155,10 @@ public class ConversationService {
                     }
                 },
                 error -> {
+                    if (isCancelled.get()) {
+                        log.info("串流已由客戶端主動中斷，略過錯誤發送。");
+                        return;
+                    }
                     String errorMsg = error.getMessage() != null && !error.getMessage().isBlank()
                             ? error.getMessage()
                             : error.toString();
@@ -185,12 +200,12 @@ public class ConversationService {
         int currentRound = (int) (count / 2) + 1;
 
         ChatMessage userMsg = new ChatMessage(conversationId, "USER", userQuery, currentRound);
-        userMsg = chatMessageRepository.save(userMsg);
+        final ChatMessage savedUserMsg = chatMessageRepository.save(userMsg);
 
         try {
             emitter.send(SseEmitter.event().name("metadata").data(Map.of(
                     "conversationId", conversationId.toString(),
-                    "userMessageId", userMsg.getId().toString(),
+                    "userMessageId", savedUserMsg.getId().toString(),
                     "roundNumber", currentRound
             )));
         } catch (IOException e) {
@@ -210,20 +225,34 @@ public class ConversationService {
         String followUpSystemPrompt = skillService.getFollowUpSystemPrompt();
         Map<String, Object> followUpSchema = skillService.getFollowUpResponseSchema();
 
+        java.util.concurrent.atomic.AtomicBoolean isCancelled = new java.util.concurrent.atomic.AtomicBoolean(false);
+        emitter.onCompletion(() -> isCancelled.set(true));
+        emitter.onTimeout(() -> isCancelled.set(true));
+        emitter.onError(e -> isCancelled.set(true));
+
         geminiService.streamContent(
                 followUpSystemPrompt,
                 history,
                 request.apiKey(),
                 followUpSchema,
+                isCancelled::get,
                 chunk -> {
                     try {
                         fullReply.append(chunk);
                         emitter.send(SseEmitter.event().name("delta").data(Map.of("text", chunk)));
-                    } catch (IOException ex) {
-                        log.warn("向客戶端傳送 delta chunk 失敗: {}", ex.getMessage());
+                    } catch (Exception ex) {
+                        isCancelled.set(true);
+                        log.info("向客戶端傳送 delta chunk 終止 (客戶端已中斷或停止生成): {}", ex.getMessage());
                     }
                 },
                 () -> {
+                    if (isCancelled.get()) {
+                        log.info("追加提問已被客戶端強制停止，清理本次未完成的發問記錄。");
+                        try {
+                            chatMessageRepository.delete(savedUserMsg);
+                        } catch (Exception ignored) {}
+                        return;
+                    }
                     try {
                         String rawJson = fullReply.toString();
                         String formattedReply = skillService.formatFollowUpJsonToText(rawJson);
@@ -247,6 +276,10 @@ public class ConversationService {
                     }
                 },
                 error -> {
+                    if (isCancelled.get()) {
+                        log.info("串流已由客戶端主動中斷，略過錯誤發送。");
+                        return;
+                    }
                     String errorMsg = error.getMessage() != null && !error.getMessage().isBlank()
                             ? error.getMessage()
                             : error.toString();
