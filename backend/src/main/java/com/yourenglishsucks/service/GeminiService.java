@@ -47,7 +47,7 @@ public class GeminiService {
     @Value("${gemini.top-p:0.95}")
     private double topP;
 
-    @Value("${gemini.max-output-tokens:1000}")
+    @Value("${gemini.max-output-tokens:8192}")
     private int maxOutputTokens;
 
     @Value("${gemini.presence-penalty:0.2}")
@@ -142,6 +142,9 @@ public class GeminiService {
             if (partsNode.isArray() && !partsNode.isEmpty()) {
                 StringBuilder sb = new StringBuilder();
                 for (JsonNode part : partsNode) {
+                    if (part.path("thought").asBoolean(false)) {
+                        continue;
+                    }
                     JsonNode textNode = part.path("text");
                     if (!textNode.isMissingNode()) {
                         sb.append(textNode.asText());
@@ -310,9 +313,19 @@ public class GeminiService {
                             if (!payload.isBlank() && !"[DONE]".equals(payload)) {
                                 try {
                                     JsonNode root = objectMapper.readTree(payload);
-                                    JsonNode parts = root.path("candidates").path(0).path("content").path("parts");
+                                    JsonNode candidate = root.path("candidates").path(0);
+                                    String finishReason = candidate.path("finishReason").asText("");
+                                    if (!finishReason.isBlank() && !"STOP".equalsIgnoreCase(finishReason)) {
+                                        log.warn("Gemini Stream 候選回應非 STOP 結束原因: finishReason={}", finishReason);
+                                    }
+
+                                    JsonNode parts = candidate.path("content").path("parts");
                                     if (parts.isArray()) {
                                         for (JsonNode part : parts) {
+                                            if (part.path("thought").asBoolean(false)) {
+                                                // 跳過內部思考鏈，避免污染正式 JSON 回傳
+                                                continue;
+                                            }
                                             JsonNode text = part.path("text");
                                             if (!text.isMissingNode() && !text.asText().isEmpty()) {
                                                 onChunkReceived.accept(text.asText());
