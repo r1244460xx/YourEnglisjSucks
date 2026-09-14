@@ -121,18 +121,8 @@ public class GeminiService {
         }
         requestBody.put("contents", contents);
 
-        // 3. Generation Config (嚴格限制 JSON 回覆、1000 Tokens、temperature 0.55、topP 0.95、presencePenalty 0.2、thinkingBudget 0、responseSchema)
-        Map<String, Object> genConfig = new HashMap<>();
-        genConfig.put("temperature", temperature);
-        genConfig.put("topP", topP);
-        genConfig.put("maxOutputTokens", maxOutputTokens);
-        genConfig.put("presencePenalty", presencePenalty);
-        genConfig.put("responseMimeType", "application/json");
-        genConfig.put("thinkingConfig", Map.of("thinkingBudget", thinkingBudget));
-        if (responseSchema != null && !responseSchema.isEmpty()) {
-            genConfig.put("responseSchema", responseSchema);
-        }
-        requestBody.put("generationConfig", genConfig);
+        // 3. Generation Config (符合 Gemini 3.x 規格，避免因已棄用之取樣參數觸發 400 INVALID_ARGUMENT)
+        requestBody.put("generationConfig", buildGenerationConfig(modelName, responseSchema));
 
         try {
             String responseJson = restClient.post()
@@ -263,17 +253,7 @@ public class GeminiService {
                     ));
                 }
                 requestBody.put("contents", contents);
-                Map<String, Object> genConfig = new HashMap<>();
-                genConfig.put("temperature", temperature);
-                genConfig.put("topP", topP);
-                genConfig.put("maxOutputTokens", maxOutputTokens);
-                genConfig.put("presencePenalty", presencePenalty);
-                genConfig.put("responseMimeType", "application/json");
-                genConfig.put("thinkingConfig", Map.of("thinkingBudget", thinkingBudget));
-                if (responseSchema != null && !responseSchema.isEmpty()) {
-                    genConfig.put("responseSchema", responseSchema);
-                }
-                requestBody.put("generationConfig", genConfig);
+                requestBody.put("generationConfig", buildGenerationConfig(modelName, responseSchema));
 
                 String jsonBody = objectMapper.writeValueAsString(requestBody);
 
@@ -310,6 +290,7 @@ public class GeminiService {
                     StringBuilder errSb = new StringBuilder();
                     resp.body().forEach(errSb::append);
                     String rawErr = errSb.toString();
+                    log.error("Gemini API 回傳錯誤 HTTP {}: {} | Payload: {}", resp.statusCode(), rawErr, jsonBody);
                     if (resp.statusCode() == 429) {
                         throw new RuntimeException("【API 呼叫頻率已達 Google 免費額度上限 (429 Too Many Requests)】\n請稍候約 30~60 秒後點擊「點擊重試 🔄」，或至 Google AI Studio 綁定計費帳戶以提升額度。");
                     }
@@ -418,5 +399,30 @@ public class GeminiService {
                 }
                 """.formatted(safeText);
         }
+    }
+
+    /**
+     * 動態建構符合模型相容性的 generationConfig。
+     * Google Gemini 3.x 系列 (如 gemini-3.6-flash) 嚴格廢棄了取樣參數 (temperature, topP, topK, presencePenalty, thinkingConfig 等)，
+     * 若傳入這些無效參數會觸發 HTTP 400 INVALID_ARGUMENT ("Request contains an invalid argument.")。
+     */
+    private Map<String, Object> buildGenerationConfig(String model, Map<String, Object> responseSchema) {
+        Map<String, Object> genConfig = new HashMap<>();
+        genConfig.put("responseMimeType", "application/json");
+        if (maxOutputTokens > 0) {
+            genConfig.put("maxOutputTokens", maxOutputTokens);
+        }
+        if (responseSchema != null && !responseSchema.isEmpty()) {
+            genConfig.put("responseSchema", responseSchema);
+        }
+
+        boolean isGemini3OrNewer = model != null && (model.toLowerCase().contains("gemini-3") || model.toLowerCase().contains("flash"));
+        if (!isGemini3OrNewer) {
+            if (temperature > 0) genConfig.put("temperature", temperature);
+            if (topP > 0) genConfig.put("topP", topP);
+            if (presencePenalty > 0) genConfig.put("presencePenalty", presencePenalty);
+            if (thinkingBudget > 0) genConfig.put("thinkingConfig", Map.of("thinkingBudget", thinkingBudget));
+        }
+        return genConfig;
     }
 }
