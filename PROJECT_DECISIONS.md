@@ -12,7 +12,7 @@
 - **資料庫 (DB)**：使用本機 Docker 運行容器化 PostgreSQL 16 (`docker-compose.yml`)。
 - **後端 (Spring Boot)**：先在 Host 本地直接運行，透過 `localhost:5432` 串接容器化的 PostgreSQL。
 - **Gemini API Key**：配置於後端 `application.yaml`（讀取環境變數 `${GEMINI_API_KEY:}`），同時前端設定頁面保留手動輸入覆蓋的彈性。
-- **預設模型 (Model)**：直接 hardcoded 使用最新 `gemini-2.5-flash` 作為預設主力模型。
+- **預設模型 (Model)**：使用最新官方推薦之 `gemini-3.6-flash` 作為主力模型（免費額度高、速度快且語音與文本修飾能力顯著提升；原 2.5-flash 已被 Google 宣告停止對新用戶開放）。
 
 ### 2. 標題 (Title) 與雙向重新命名邏輯 (確認選項 C)
 - **初次生成**：首次修飾成功後，預設擷取原始英文文本的前 35 個字元作為對話標題。

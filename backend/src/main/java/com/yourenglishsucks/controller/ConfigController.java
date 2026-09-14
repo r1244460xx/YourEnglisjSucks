@@ -17,7 +17,7 @@ public class ConfigController {
 
     private final GeminiService geminiService;
 
-    @Value("${gemini.model:gemini-2.5-flash}")
+    @Value("${gemini.model:gemini-3.6-flash}")
     private String modelName;
 
     public ConfigController(GeminiService geminiService) {
