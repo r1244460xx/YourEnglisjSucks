@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { marked } from 'marked';
-import { Sparkles, User, Bot, CheckCircle2, AlertCircle, Edit2, RotateCw, Square, Copy, Check } from 'lucide-react';
+import { Sparkles, User, Bot, CheckCircle2, AlertCircle, AlertTriangle, Edit2, RotateCw, Square, Copy, Check } from 'lucide-react';
 
 export default function ChatArea({
   currentConversation,
@@ -8,6 +8,8 @@ export default function ChatArea({
   messages,
   isLoading,
   errorInfo,
+  apiKeyConfigured,
+  onOpenSettings,
   onSampleClick,
   onRenameTitle,
   onStopThinking,
@@ -198,6 +200,27 @@ export default function ChatArea({
               </p>
             </div>
 
+            {/* Mock Mode Alert in Empty State */}
+            {!apiKeyConfigured && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 text-left text-xs space-y-2 text-amber-800 dark:text-amber-200 max-w-lg w-full flex items-start justify-between gap-3 shadow-2xs">
+                <div className="space-y-1">
+                  <div className="font-semibold flex items-center gap-1.5 text-amber-700 dark:text-amber-400">
+                    <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
+                    <span>目前處於 Mock 本地模擬模式</span>
+                  </div>
+                  <p className="text-[11px] text-amber-700/90 dark:text-amber-300/90 leading-relaxed">
+                    尚未配置 Gemini API Key。送出後將回傳預設的專案延期測試假資料，無法理解真實文本。請設定 Key 以啟用真實 Gemini 2.5 Flash 智能修飾！
+                  </p>
+                </div>
+                <button
+                  onClick={onOpenSettings}
+                  className="px-2.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-semibold text-xs whitespace-nowrap shadow-xs transition cursor-pointer shrink-0"
+                >
+                  設定 Key ⚙️
+                </button>
+              </div>
+            )}
+
             {/* Guidelines */}
             <div className="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-4 text-left text-xs space-y-2 text-[var(--muted)] max-w-lg w-full">
               <div className="font-semibold text-[var(--foreground)] flex items-center gap-1.5">
@@ -232,6 +255,24 @@ export default function ChatArea({
           </div>
         ) : (
           <>
+            {/* Mock Mode Alert Banner when conversation is active */}
+            {!apiKeyConfigured && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3.5 text-xs flex items-center justify-between gap-3 text-amber-800 dark:text-amber-200 mb-4 animate-in fade-in shadow-2xs">
+                <div className="flex items-center gap-2 min-w-0">
+                  <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
+                  <span className="leading-tight">
+                    <strong>目前處於 Mock 本地模擬模式</strong>：以下內容為固定測試假資料（專案延期），無法針對您的真實草稿分析。
+                  </span>
+                </div>
+                <button
+                  onClick={onOpenSettings}
+                  className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-medium text-xs whitespace-nowrap shadow-xs transition cursor-pointer shrink-0"
+                >
+                  填入 Key 啟用真實 AI ↗
+                </button>
+              </div>
+            )}
+
             {/* Top Pinned / Persistent Original English Draft Card */}
             {effectiveDraft && (
               <div className="bg-[var(--card)] border-2 border-indigo-500/30 dark:border-indigo-500/20 rounded-2xl p-4 sm:p-5 shadow-xs transition mb-4">
@@ -335,11 +376,15 @@ export default function ChatArea({
                         </span>
                         <span>•</span>
                         <span className={`px-2 py-0.5 rounded text-[11px] font-semibold border ${
-                          isRound1
-                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
-                            : 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20'
+                          !apiKeyConfigured
+                            ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30'
+                            : isRound1
+                              ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                              : 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20'
                         }`}>
-                          {isRound1 ? '✨ 英文修飾解析 (搭配專屬 Skill)' : `💬 上下文追加答覆 (Round ${msg.roundNumber})`}
+                          {!apiKeyConfigured
+                            ? (isRound1 ? '⚠️ 測試模擬假資料 (Mock AI)' : `⚠️ 模擬追加答覆 (Mock AI · Round ${msg.roundNumber})`)
+                            : (isRound1 ? '✨ 英文修飾解析 (Gemini 2.5 Flash)' : `💬 上下文追加答覆 (Round ${msg.roundNumber})`)}
                         </span>
                       </div>
 
@@ -376,6 +421,20 @@ export default function ChatArea({
                       </div>
                     </div>
                     <div className="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-5 sm:p-6 shadow-xs prose prose-sm dark:prose-invert max-w-none select-text prose-headings:font-semibold prose-a:text-indigo-600 prose-pre:bg-[var(--background)] prose-pre:border prose-pre:border-[var(--border)] [&_blockquote]:border-l-4 [&_blockquote]:border-indigo-500 [&_blockquote]:bg-indigo-500/10 [&_blockquote]:dark:bg-indigo-500/15 [&_blockquote]:py-3 [&_blockquote]:px-4.5 [&_blockquote]:rounded-r-2xl [&_blockquote]:my-3 [&_blockquote]:not-italic [&_blockquote]:text-[var(--foreground)] [&_blockquote]:font-medium [&_blockquote]:select-text [&_blockquote]:cursor-text [&_blockquote]:shadow-2xs [&_blockquote]:tracking-wide [&_hr]:my-5 [&_hr]:border-[var(--border)]">
+                      {!apiKeyConfigured && (
+                        <div className="mb-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-200 text-xs flex items-center justify-between not-prose">
+                          <span className="flex items-center gap-1.5 min-w-0">
+                            <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
+                            <span><strong>Mock 模式提醒</strong>：以下為預設測試範本（專案延期），非真實 AI 針對您草稿的解析。</span>
+                          </span>
+                          <button
+                            onClick={onOpenSettings}
+                            className="underline font-semibold cursor-pointer ml-2 shrink-0 hover:text-amber-600"
+                          >
+                            設定 Key 啟用真實 AI ↗
+                          </button>
+                        </div>
+                      )}
                       {isStreaming && !msg.content ? (
                         <div className="flex items-center gap-2 text-xs text-[var(--muted)] py-2">
                           <div className="flex space-x-1">

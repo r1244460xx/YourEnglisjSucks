@@ -401,6 +401,8 @@ export default function App() {
             messages={messages}
             isLoading={isLoading}
             errorInfo={errorInfo}
+            apiKeyConfigured={hasBackendApiKey || !!apiKey}
+            onOpenSettings={() => setIsSettingsOpen(true)}
             onSampleClick={handleSampleClick}
             onRenameTitle={handleRenameConversation}
             onStopThinking={handleStopThinking}

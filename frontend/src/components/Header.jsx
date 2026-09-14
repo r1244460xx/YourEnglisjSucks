@@ -70,15 +70,17 @@ export default function Header({
       <div className="flex items-center gap-2">
         <div 
           onClick={onOpenSettings}
-          className={`cursor-pointer hidden md:flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border transition ${
+          className={`cursor-pointer flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border transition ${
             apiKeyConfigured 
               ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20' 
-              : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 hover:bg-amber-500/20'
+              : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 hover:bg-amber-500/20 shadow-xs'
           }`}
-          title={apiKeyConfigured ? 'Gemini API Key 已就緒' : '點擊設定 Gemini API Key'}
+          title={apiKeyConfigured ? 'Gemini API Key 已就緒 (真實 AI 模式)' : '目前為 Mock 靜態模擬模式，點擊設定 Gemini API Key'}
         >
           <Key className="w-3 h-3" />
-          <span>{modelName || 'Gemini 2.5 Flash'}</span>
+          <span className="font-medium">
+            {apiKeyConfigured ? (modelName || 'Gemini 2.5 Flash') : 'Mock 模式 (未設 Key)'}
+          </span>
           <span className={`w-1.5 h-1.5 rounded-full ${apiKeyConfigured ? 'bg-emerald-500' : 'bg-amber-500 animate-ping'}`}></span>
         </div>
 

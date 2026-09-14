@@ -58,11 +58,11 @@ export default function SettingsModal({
           <div className="text-[var(--muted)] pl-5">
             {hasBackendApiKey ? (
               <span className="text-emerald-600 dark:text-emerald-400 font-medium">
-                ✅ 後端環境已配置 GEMINI_API_KEY，可直接使用。
+                ✅ 後端環境已配置 GEMINI_API_KEY，已啟用真實 Gemini 大模型！
               </span>
             ) : (
-              <span className="text-amber-600 dark:text-amber-400 font-medium">
-                ⚠️ 後端未偵測到全域 API Key。您可以在下方填寫個人 Key，或在後端設定 GEMINI_API_KEY。若兩者皆無，系統將提供高品質智慧模擬回覆。
+              <span className="text-amber-600 dark:text-amber-400 font-medium leading-relaxed block">
+                ⚠️ 後端未偵測到全域 API Key。若未填入金鑰，系統將處於 <strong>Mock 本地模擬模式</strong>（回傳預設的靜態專案延期測試假資料，無法理解真實文本）。請在下方填寫您的 API Key 以啟用真實 AI！
               </span>
             )}
           </div>
@@ -70,9 +70,19 @@ export default function SettingsModal({
 
         {/* Input Gemini API Key */}
         <div className="space-y-1.5">
-          <label className="text-xs font-semibold text-[var(--foreground)]">
-            自定義 Gemini API Key (可選)
-          </label>
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-semibold text-[var(--foreground)]">
+              自定義 Gemini API Key (可選)
+            </label>
+            <a
+              href="https://aistudio.google.com/app/apikey"
+              target="_blank"
+              rel="noreferrer"
+              className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-0.5"
+            >
+              取得免費 Google API Key ↗
+            </a>
+          </div>
           <input
             type="password"
             value={localKey}
@@ -81,7 +91,7 @@ export default function SettingsModal({
             className="w-full px-3 py-2 rounded-xl bg-[var(--background)] border border-[var(--border)] focus:border-indigo-500 focus:outline-none text-xs text-[var(--foreground)] font-mono"
           />
           <p className="text-[11px] text-[var(--muted)]">
-            金鑰僅儲存於您的本機瀏覽器 LocalStorage 中，每次請求時透過 Header 帶入。
+            金鑰僅儲存於本機瀏覽器 LocalStorage 中，每次請求時透過 Header 帶入呼叫 Google 官方 API。
           </p>
         </div>
 
