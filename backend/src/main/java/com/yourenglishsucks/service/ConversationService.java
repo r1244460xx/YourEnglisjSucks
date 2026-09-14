@@ -196,8 +196,18 @@ public class ConversationService {
             return;
         }
 
-        long count = chatMessageRepository.countByConversationId(conversationId);
-        int currentRound = (int) (count / 2) + 1;
+        // 1. 取得現有歷史訊息，並檢查末端是否存在未獲 AI 回應的失敗/孤立問題 (例如先前 4xx 錯誤)
+        List<ChatMessage> existingMessages = new ArrayList<>(chatMessageRepository.findByConversationIdOrderByCreatedAtAsc(conversationId));
+        if (!existingMessages.isEmpty()) {
+            ChatMessage lastMsg = existingMessages.get(existingMessages.size() - 1);
+            if ("USER".equalsIgnoreCase(lastMsg.getSenderType())) {
+                log.info("偵測到對話 {} 存在未成功獲得 AI 回覆之發問記錄 (ID: {})，自資料庫與上下文徹底移除該失敗問題。", conversationId, lastMsg.getId());
+                chatMessageRepository.delete(lastMsg);
+                existingMessages.remove(existingMessages.size() - 1);
+            }
+        }
+
+        int currentRound = (existingMessages.size() / 2) + 1;
 
         ChatMessage userMsg = new ChatMessage(conversationId, "USER", userQuery, currentRound);
         final ChatMessage savedUserMsg = chatMessageRepository.save(userMsg);
@@ -213,12 +223,12 @@ public class ConversationService {
             return;
         }
 
-        List<ChatMessage> allMessages = chatMessageRepository.findByConversationIdOrderByCreatedAtAsc(conversationId);
         List<Map<String, String>> history = new ArrayList<>();
-        for (ChatMessage msg : allMessages) {
+        for (ChatMessage msg : existingMessages) {
             String role = "USER".equalsIgnoreCase(msg.getSenderType()) ? "user" : "model";
             history.add(Map.of("role", role, "text", msg.getContent()));
         }
+        history.add(Map.of("role", "user", "text", userQuery));
 
         StringBuilder fullReply = new StringBuilder();
 
@@ -372,21 +382,29 @@ public class ConversationService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "追加訊息不能為空");
         }
 
-        // 計算目前輪次
-        long count = chatMessageRepository.countByConversationId(conversationId);
-        int currentRound = (int) (count / 2) + 1;
+        // 1. 取得現有歷史訊息，並檢查末端是否存在未獲 AI 回應的失敗/孤立問題 (例如先前 4xx 錯誤)
+        List<ChatMessage> existingMessages = new ArrayList<>(chatMessageRepository.findByConversationIdOrderByCreatedAtAsc(conversationId));
+        if (!existingMessages.isEmpty()) {
+            ChatMessage lastMsg = existingMessages.get(existingMessages.size() - 1);
+            if ("USER".equalsIgnoreCase(lastMsg.getSenderType())) {
+                log.info("偵測到對話 {} 前一筆追加發問遭遇錯誤未成功獲得回覆 (ID: {})，自資料庫與上下文移除該失敗記錄。", conversationId, lastMsg.getId());
+                chatMessageRepository.delete(lastMsg);
+                existingMessages.remove(existingMessages.size() - 1);
+            }
+        }
+
+        int currentRound = (existingMessages.size() / 2) + 1;
 
         // 儲存使用者追加發問
         ChatMessage userMsg = new ChatMessage(conversationId, "USER", userQuery, currentRound);
         chatMessageRepository.save(userMsg);
 
-        // 組合歷史對話清單 (保留所有歷史訊息)
-        List<ChatMessage> allMessages = chatMessageRepository.findByConversationIdOrderByCreatedAtAsc(conversationId);
         List<Map<String, String>> history = new ArrayList<>();
-        for (ChatMessage msg : allMessages) {
+        for (ChatMessage msg : existingMessages) {
             String role = "USER".equalsIgnoreCase(msg.getSenderType()) ? "user" : "model";
             history.add(Map.of("role", role, "text", msg.getContent()));
         }
+        history.add(Map.of("role", "user", "text", userQuery));
 
         // 呼叫 Gemini (帶 follow-up 系統指令規範 JSON 回覆)
         String followUpSystemPrompt = skillService.getFollowUpSystemPrompt();
@@ -439,13 +457,22 @@ public class ConversationService {
     /**
      * 取得特定對話的完整內容與歷史訊息
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public ConversationDetailResponse getConversationDetails(UUID conversationId) {
         Conversation conversation = conversationRepository.findById(conversationId)
                 .filter(c -> !c.isArchived())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "對話不存在"));
 
-        List<ChatMessage> messages = chatMessageRepository.findByConversationIdOrderByCreatedAtAsc(conversationId);
+        List<ChatMessage> messages = new ArrayList<>(chatMessageRepository.findByConversationIdOrderByCreatedAtAsc(conversationId));
+        if (!messages.isEmpty()) {
+            ChatMessage lastMsg = messages.get(messages.size() - 1);
+            if ("USER".equalsIgnoreCase(lastMsg.getSenderType())) {
+                log.info("載入對話 {} 時自動清除未獲得 AI 回覆的孤立發問記錄 (ID: {})", conversationId, lastMsg.getId());
+                chatMessageRepository.delete(lastMsg);
+                messages.remove(messages.size() - 1);
+            }
+        }
+
         List<ChatMessageResponse> messageResponses = messages.stream()
                 .map(this::mapMessageToResponse)
                 .toList();

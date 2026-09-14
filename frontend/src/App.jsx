@@ -99,7 +99,7 @@ export default function App() {
     try {
       const data = await fetchConversationDetails(id);
       setCurrentConversationId(id);
-      setMessages(data.messages || []);
+      setMessages(getValidConversationMessages(data.messages || []));
       const draft = data.rawSubmissionText || (data.messages && data.messages.find((m) => m.senderType === 'USER' && m.roundNumber === 1)?.content) || '';
       setOriginalDraftText(draft);
       setInput(drafts[id] || '');
@@ -312,18 +312,33 @@ export default function App() {
     }
   };
 
+  // 輔助函式：取得乾淨且完全成功的問答列表
+  // 若最後一則是未獲得 AI 成功回覆的使用者發問 (例如遇到 4xx 錯誤)，將其剔除，保證畫面只保留完全成功的問答
+  const getValidConversationMessages = (msgs) => {
+    const withoutStreaming = (msgs || []).filter((m) => !String(m.id).includes('streaming'));
+    if (withoutStreaming.length > 0 && withoutStreaming[withoutStreaming.length - 1].senderType === 'USER') {
+      return withoutStreaming.slice(0, -1);
+    }
+    return withoutStreaming;
+  };
+
   // Send message with End-to-End Streaming
   const handleSend = async (overrideText) => {
     const text = (overrideText || input).trim();
     if (!text || isLoading) return;
 
-    // 僅過濾尚未完成的 streaming AI 訊息，絕不清除使用者的歷史訊息與原始草稿
-    const cleanMsgs = messages.filter((m) => !String(m.id).includes('streaming'));
+    // 清除任何先前的錯誤提示
+    setErrorInfo(null);
+
+    // 取得乾淨且完全成功的問答訊息 (若上一則發問遭遇 4xx 錯誤，自畫面徹底移除)
+    const cleanMsgs = getValidConversationMessages(messages);
     const hasCompletedAiMsg = cleanMsgs.some((m) => m.senderType === 'AI');
 
     if (!currentConversationId || !hasCompletedAiMsg) {
+      setMessages([]);
       executeSendPolish(text);
     } else {
+      setMessages(cleanMsgs);
       executeSendFollowUp(text, currentConversationId, cleanMsgs);
     }
   };
@@ -341,7 +356,7 @@ export default function App() {
       setMessages(lastActiveMessagesRef.current);
       lastActiveMessagesRef.current = null;
     } else {
-      setMessages((prev) => prev.filter((m) => !String(m.id).includes('streaming')));
+      setMessages((prev) => getValidConversationMessages(prev));
     }
   };
 
@@ -351,7 +366,8 @@ export default function App() {
     // 立即清除錯誤狀態，使紅色錯誤框與重試按鈕即刻消失
     setErrorInfo(null);
 
-    const cleanMsgs = messages.filter((m) => !String(m.id).includes('streaming'));
+    // 取得排除失敗問題後的乾淨基礎訊息
+    const cleanMsgs = getValidConversationMessages(messages);
     const hasCompletedAiMsg = cleanMsgs.some((m) => m.senderType === 'AI');
 
     if (!currentConversationId || !hasCompletedAiMsg) {
@@ -359,9 +375,8 @@ export default function App() {
       setMessages([]);
       executeSendPolish(retryText);
     } else {
-      const baseMsgs = cleanMsgs.filter((m) => m.content !== retryText);
-      setMessages(baseMsgs);
-      executeSendFollowUp(retryText, currentConversationId, baseMsgs);
+      setMessages(cleanMsgs);
+      executeSendFollowUp(retryText, currentConversationId, cleanMsgs);
     }
   };
 
