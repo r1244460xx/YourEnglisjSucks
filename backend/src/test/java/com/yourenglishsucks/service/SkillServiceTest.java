@@ -111,4 +111,22 @@ class SkillServiceTest {
         String text = skillService.formatFollowUpJsonToText(json);
         assertThat(text).isEqualTo("這是一個道地的口語說法。");
     }
+
+    @Test
+    @DisplayName("驗證追加提問 System Prompt 與 Response Schema 結構符合規格")
+    void testFollowUpSystemPromptAndSchema() {
+        String prompt = skillService.getFollowUpSystemPrompt();
+        assertThat(prompt).contains("英語母語專家寫作教練");
+        assertThat(prompt).contains("追加疑問");
+        assertThat(prompt).contains("{\"reply\": \"解答內容\"}");
+
+        java.util.Map<String, Object> schema = skillService.getFollowUpResponseSchema();
+        assertThat(schema.get("type")).isEqualTo("OBJECT");
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> properties = (java.util.Map<String, Object>) schema.get("properties");
+        assertThat(properties).containsKey("reply");
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, Object> replyProp = (java.util.Map<String, Object>) properties.get("reply");
+        assertThat(replyProp.get("description").toString()).contains("Markdown 格式");
+    }
 }

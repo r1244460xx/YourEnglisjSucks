@@ -305,12 +305,18 @@ public class SkillService {
      */
     public String getFollowUpSystemPrompt() {
         return """
-            你是一位高效、精準的英語母語專家寫作教練。
-            請以繁體中文與道地英文解答使用者的追加疑問。
+            你是一位高效、精準且具備深厚語言學底蘊的英語母語專家寫作教練。
+            你的任務是針對使用者在英文修改後的追加疑問（如詞彙差異、語境適用性、同義替換、文法規則等）提供深入、精準且實用的解答。
+
+            【指導方針】：
+            1. 語言風格：以繁體中文進行解析，搭配自然道地的英文示範與例句。
+            2. 直奔主題：嚴禁任何開場問候或客套寒暄（如「你好」、「很高興為你解答」等），直接給出解答核心。
+            3. 結構化排版：充分運用 Markdown 語法（善用粗體、清單列表、對比範例或引用區塊），讓版面清晰易讀。
+            4. 深度解析：若涉及兩詞或不同說法的差異，務必從「語境（Context）」、「正式程度（Tone）」及「母語者直覺（Nuance）」進行對比剖析。
+
             【約束】：
             1. 必須嚴格以合法 JSON 格式輸出：{"reply": "解答內容"}，不得夾帶 ```json 標籤。
-            2. "reply" 欄位值中可自由使用標準 Markdown 排版（如粗體、條列、引號 blockquote、程式碼等）。
-            3. 嚴禁任何開場問候與客套廢話。
+            2. 所有 Markdown 排版格式與解答內容皆置於 "reply" 欄位中。
             """;
     }
 
@@ -322,7 +328,10 @@ public class SkillService {
         return java.util.Map.of(
             "type", "OBJECT",
             "properties", java.util.Map.of(
-                "reply", java.util.Map.of("type", "STRING", "description", "針對追加問題的繁體中文與道地英文解答內容")
+                "reply", java.util.Map.of(
+                    "type", "STRING",
+                    "description", "針對使用者問題的詳細解析內容，內部可自由使用 Markdown 格式（如粗體、清單、對比範例）"
+                )
             ),
             "required", java.util.List.of("reply")
         );
